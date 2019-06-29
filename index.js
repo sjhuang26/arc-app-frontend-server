@@ -195,7 +195,7 @@ exports.getResultOrFail = getResultOrFail;
 function askServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
     console.log('[server] args', args);
-    const result = yield failAfterFiveSeconds(mockServer(args));
+    const result = yield failAfterFiveSeconds(realServer(args));
     console.log('[server] result', result);
     return convertServerResponseToAskFinished(result);
   });
@@ -281,6 +281,23 @@ class MockResourceServerEndpoint {
       this.contents[String(args[1].id)] = args[1];
       onClientNotification(['update', this.resource().name, args[1]]);
       return this.success(null);
+    }
+
+    if (args[0] === 'retrieveDefault') {
+      const result = {
+        id: -1,
+        date: Date.now()
+      };
+
+      for (const {
+        name
+      } of this.resource().info.fields) {
+        if (result[name] === undefined) {
+          result[name] = '';
+        }
+      }
+
+      return this.success(result);
     }
 
     if (args[0] === 'create') {
@@ -378,6 +395,27 @@ exports.mockResourceServerEndpoints = {
     }
   })
 };
+
+function realServer(args) {
+  return __awaiter(this, void 0, void 0, function* () {
+    try {
+      const val = yield new Promise((res, rej) => {
+        window['google'].script.run.withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
+      });
+      return {
+        error: false,
+        val,
+        message: null
+      };
+    } catch (err) {
+      return {
+        error: true,
+        val: null,
+        message: shared_1.stringifyError(err)
+      };
+    }
+  });
+}
 
 function mockServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
@@ -1047,9 +1085,8 @@ exports.DomWidget = DomWidget;
 class ObservableState {
   constructor(initialValue) {
     this.val = initialValue;
-    this.change = new Event(); // TODO: make sure this works
-
-    this.change.trigger();
+    this.change = new Event();
+    exports.onMount.listen(this.change.chain);
   }
 
   changeTo(val) {
@@ -1086,6 +1123,14 @@ class ResourceEndpoint {
 
   retrieveAll() {
     return this.askEndpoint('retrieveAll');
+  }
+
+  retrieveDefault() {
+    return this.askEndpoint('retrieveDefault');
+  }
+
+  retrieve(id) {
+    return this.askEndpoint('retrieve', id);
   }
 
   create(record) {
@@ -1386,6 +1431,8 @@ IMPORTANT GLOBALS
 
 */
 
+exports.onReady = new Event();
+exports.onMount = new Event();
 exports.state = {
   tiledWindows: new ObservableState([])
 };
@@ -2343,16 +2390,13 @@ const shared_1 = require("./core/shared");
 
 const widget_1 = require("./core/widget");
 
-console.log('hi there!');
-
-window['appOnReady'] = () => __awaiter(this, void 0, void 0, function* () {
+$(document).ready(shared_1.onReady.chain);
+shared_1.onReady.listen(() => __awaiter(this, void 0, void 0, function* () {
   // TODO: replace with proper loading widget
-  $('body').append($('<h1 id="app">Loading...</h1>'));
+  $('#app').replaceWith($('<h1 id="app">Loading...</h1>'));
   yield shared_1.initializeResources();
-  $('body').empty();
-  $('body').append(widget_1.rootWidget().dom);
-});
-
-$(document).ready(window['appOnReady']);
+  $('#app').replaceWith(widget_1.rootWidget().dom);
+  shared_1.onMount.trigger();
+}));
 },{"./core/shared":"m0/6","./core/widget":"o4ND"}]},{},["7QCb"], null)
-//# sourceMappingURL=/src.9fabe445.js.map
+//# sourceMappingURL=/src.97c3945d.js.map
