@@ -156,31 +156,52 @@ const shared_1 = require("./shared");
 
 function failAfterFiveSeconds(p) {
   return new Promise((res, rej) => {
-    setTimeout(() => rej({
+    setTimeout(() => rej(JSON.stringify({
       error: true,
-      message: 'Server is not responding'
-    }), 5000);
+      message: 'Server is not responding',
+      val: null
+    })), 5000);
     p.then(res);
   });
 }
 
-function convertServerResponseToAskFinished(response) {
-  if (response.error) {
+function convertServerStringToAskFinished(str) {
+  try {
+    if (typeof str !== 'string') {
+      throw new Error('server response not in correct type');
+    } else {
+      try {
+        const response = JSON.parse(str);
+
+        if (typeof response !== 'object' || typeof response.error !== 'boolean') {
+          throw new Error('server response not in correct type');
+        } else if (response.error) {
+          const v = {
+            status: AskStatus.ERROR,
+            message: response.message
+          };
+          return v;
+        } else {
+          const v = {
+            status: AskStatus.LOADED,
+            val: response.val
+          };
+          return v;
+        }
+      } catch (err) {
+        throw new Error('parsing issue >> ' + shared_1.stringifyError(err));
+      }
+    }
+  } catch (err) {
     const v = {
       status: AskStatus.ERROR,
-      message: response.message
-    };
-    return v;
-  } else {
-    const v = {
-      status: AskStatus.LOADED,
-      val: response.val
+      message: 'during convert >> ' + shared_1.stringifyError(err)
     };
     return v;
   }
 }
 
-exports.convertServerResponseToAskFinished = convertServerResponseToAskFinished;
+exports.convertServerStringToAskFinished = convertServerStringToAskFinished;
 
 function getResultOrFail(askFinished) {
   if (askFinished.status == AskStatus.ERROR) {
@@ -194,10 +215,30 @@ exports.getResultOrFail = getResultOrFail;
 
 function askServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    console.log('[server] args', args);
-    const result = yield failAfterFiveSeconds(realServer(args));
-    console.log('[server] result', result);
-    return convertServerResponseToAskFinished(result);
+    let result = JSON.stringify({
+      error: true,
+      val: null,
+      message: 'Mysterious error'
+    });
+
+    try {
+      if (window['APP_DEBUG_MOCK'] !== 1) {
+        console.log('[server]    args', args);
+        result = yield failAfterFiveSeconds(realServer(args));
+        console.log('[server]  result', args, '=>', result);
+      } else {
+        console.log('[MOCK server]   args', args);
+        result = yield failAfterFiveSeconds(mockServer(args));
+        console.log('[MOCK server] result', args, '=>', result);
+      }
+    } catch (err) {
+      result = JSON.stringify({
+        status: AskStatus.ERROR,
+        message: 'askserver error >> ' + shared_1.stringifyError(err)
+      });
+    }
+
+    return convertServerStringToAskFinished(result);
   });
 }
 
@@ -271,8 +312,6 @@ class MockResourceServerEndpoint {
   }
 
   processClientAsk(args) {
-    console.log('[mock server] endpoint', this.resource().name, args);
-
     if (args[0] === 'retrieveAll') {
       return this.success(this.contents);
     }
@@ -281,23 +320,6 @@ class MockResourceServerEndpoint {
       this.contents[String(args[1].id)] = args[1];
       onClientNotification(['update', this.resource().name, args[1]]);
       return this.success(null);
-    }
-
-    if (args[0] === 'retrieveDefault') {
-      const result = {
-        id: -1,
-        date: Date.now()
-      };
-
-      for (const {
-        name
-      } of this.resource().info.fields) {
-        if (result[name] === undefined) {
-          result[name] = '';
-        }
-      }
-
-      return this.success(result);
     }
 
     if (args[0] === 'create') {
@@ -341,117 +363,77 @@ class MockResourceServerEndpoint {
 }
 
 exports.mockResourceServerEndpoints = {
-  tutors: new MockResourceServerEndpoint(() => shared_1.tutors, {
-    '1': {
-      id: 1,
-      date: 1561334668346,
-      firstName: 'John',
-      lastName: 'Doe',
-      friendlyName: 'Jo',
-      friendlyFullName: 'Jo-Do',
-      grade: 12,
-      mods: [1, 2],
-      modsPref: [1],
-      subjectList: 'Geometry, Spanish'
-    },
-    '2': {
-      id: 2,
-      date: 1561335668346,
-      firstName: 'Mary',
-      lastName: 'Watson',
-      friendlyName: 'Ma',
-      friendlyFullName: 'Ma-W',
-      grade: 9,
-      mods: [3, 4],
-      modsPref: [4],
-      subjectList: 'English, French'
-    }
-  }),
-  learners: new MockResourceServerEndpoint(() => shared_1.learners, {
-    '1': {
-      id: 1,
-      date: 1561334668346,
-      firstName: 'Alex',
-      lastName: 'Doe',
-      friendlyName: 'Al',
-      friendlyFullName: 'Al-D',
-      grade: 12
-    }
-  }),
+  tutors: new MockResourceServerEndpoint(() => shared_1.tutors, {}),
+  learners: new MockResourceServerEndpoint(() => shared_1.learners, {}),
   bookings: new MockResourceServerEndpoint(() => shared_1.bookings, {}),
   matchings: new MockResourceServerEndpoint(() => shared_1.matchings, {}),
   requests: new MockResourceServerEndpoint(() => shared_1.requests, {}),
-  requestSubmissions: new MockResourceServerEndpoint(() => shared_1.requestSubmissions, {
-    '1': {
-      firstName: 'a',
-      lastName: 'b',
-      friendlyName: 'c',
-      friendlyFullName: 'd',
-      grade: 1,
-      mods: [1, 3, 4],
-      subject: 'asdf',
-      id: 1,
-      date: 1561730705297
-    }
-  })
+  requestSubmissions: new MockResourceServerEndpoint(() => shared_1.requestSubmissions, {})
 };
 
 function realServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
+    function getGoogleAppsScriptEndpoint() {
+      if (window['google'] === undefined || window['google'].script === undefined) {
+        // This will be displayed to the user
+        throw 'You should turn on testing mode. Click OTHER >> TESTING MODE.';
+      }
+
+      return window['google'].script.run;
+    }
+
+    let result = 'Mysterious error';
+
     try {
-      const val = yield new Promise((res, rej) => {
-        window['google'].script.run.withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
-      });
-      return {
-        error: false,
-        val,
-        message: null
-      };
+      result = yield new Promise((res, rej) => {
+        getGoogleAppsScriptEndpoint().withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
+      }); // NOTE: an "error: true" response is still received by the client through withSuccessHandler().
     } catch (err) {
-      return {
+      result = JSON.stringify({
         error: true,
         val: null,
         message: shared_1.stringifyError(err)
-      };
+      });
     }
+
+    if (typeof result !== 'string') {
+      result = JSON.stringify({
+        error: true,
+        val: null,
+        message: shared_1.stringifyError('not a string: ' + String(result))
+      });
+    }
+
+    return result;
   });
 }
 
 function mockServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    // only for resources so far
+    let result = 'Mysterious error'; // only for resources so far
+
     try {
       const mockArgs = JSON.parse(JSON.stringify(args));
-      return yield exports.mockResourceServerEndpoints[mockArgs[0]].replyToClientAsk(mockArgs.slice(1));
+      result = JSON.stringify((yield exports.mockResourceServerEndpoints[mockArgs[0]].replyToClientAsk(mockArgs.slice(1))));
     } catch (err) {
-      return {
+      result = JSON.stringify({
         error: true,
         val: null,
         message: shared_1.stringifyError(err)
-      };
+      });
     }
+
+    if (typeof result !== 'string') {
+      result = JSON.stringify({
+        error: true,
+        val: null,
+        message: shared_1.stringifyError('not a string: ' + String(result))
+      });
+    }
+
+    return result;
   });
 }
-
-var serverMethods;
-
-(function (serverMethods) {
-  function refreshRequestSubmissionsWithForm() {
-    return __awaiter(this, void 0, void 0, function* () {
-      return askServer(['refreshRequestSubmissionsWithForm']);
-    });
-  }
-
-  serverMethods.refreshRequestSubmissionsWithForm = refreshRequestSubmissionsWithForm;
-
-  function debug() {
-    return __awaiter(this, void 0, void 0, function* () {
-      return askServer(['debug']);
-    });
-  }
-
-  serverMethods.debug = debug;
-})(serverMethods = exports.serverMethods || (exports.serverMethods = {}));
 },{"./shared":"m0/6"}],"IhYu":[function(require,module,exports) {
 "use strict";
 
@@ -466,11 +448,12 @@ function FormWidget(fields) {
   const dom = shared_1.container('<form></form>')(fields.map(({
     title,
     type,
-    name
+    name,
+    info
   }) => {
     const widget = type();
     widgets[name] = widget;
-    return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-2 col-form-label"></label>')(title), shared_1.container('<div class="col-10"></div>')(widget.dom));
+    return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-2 col-form-label"></label>')(shared_1.container('<b></b>')(title), info && shared_1.container('<i class="ml-2"></i>')(info)), shared_1.container('<div class="col-10"></div>')(widget.dom));
   }));
   return {
     dom,
@@ -680,6 +663,29 @@ function FormStringInputWidget(type) {
 
 exports.FormStringInputWidget = FormStringInputWidget;
 
+function FormJsonInputWidget(defaultValue) {
+  const dom = $(`<input class="form-control" type="text">`);
+  dom.val(JSON.stringify(defaultValue));
+  return {
+    dom,
+
+    getValue() {
+      return JSON.parse(dom.val());
+    },
+
+    setValue(newVal) {
+      return dom.val(JSON.stringify(newVal));
+    },
+
+    onChange(doThis) {
+      dom.val(() => doThis.call(null, JSON.parse(dom.val())));
+    }
+
+  };
+}
+
+exports.FormJsonInputWidget = FormJsonInputWidget;
+
 function FormNumberInputWidget(type) {
   let dom = null;
 
@@ -780,6 +786,12 @@ function NumberField(type) {
 
 exports.NumberField = NumberField;
 
+function IdField() {
+  return () => FormNumberInputWidget('number');
+}
+
+exports.IdField = IdField;
+
 function SelectField(options, optionTitles) {
   return () => FormSelectWidget(options, optionTitles);
 }
@@ -791,6 +803,12 @@ function NumberArrayField(type) {
 }
 
 exports.NumberArrayField = NumberArrayField;
+
+function JsonField(defaultValue) {
+  return () => FormJsonInputWidget(defaultValue);
+}
+
+exports.JsonField = JsonField;
 
 function FormSubmitWidget(text) {
   return shared_1.DomWidget($('<button class="btn btn-outline-success type="submit"></button>').text(text));
@@ -881,7 +899,7 @@ function SearchItemWidget(onSubmit) {
 exports.SearchItemWidget = SearchItemWidget;
 
 function createMarkerLink(text, onClick) {
-  return $('<a style="cursor: pointer"></a>').text(text).click(onClick);
+  return $('<a style="cursor: pointer; text-decoration: underline"></a>').text(text).click(onClick);
 }
 
 exports.createMarkerLink = createMarkerLink;
@@ -1023,6 +1041,28 @@ ALL BASIC CLASSES AND BASIC UTILS
 
 */
 
+function alertError(err) {
+  return __awaiter(this, void 0, void 0, function* () {
+    yield ui_1.showModal('Error!', container('<div>')($('<p><b>There was an error.</b></p>'), container('<p>')(stringifyError(err))), bb => [bb('OK', 'primary')]);
+  });
+}
+
+exports.alertError = alertError; // This function converts mod numbers (ie. 11) into A-B-day strings (ie. 1B).
+// The function is not used often because we expect users of the app to be able to
+// work with the 1-20 mod notation.
+
+function stringifyMod(mod) {
+  if (1 <= mod && mod <= 10) {
+    return String(mod) + 'A';
+  } else if (11 <= mod && mod <= 20) {
+    return String(mod - 10) + 'B';
+  }
+
+  throw new Error(`mod ${mod} isn't serializable`);
+}
+
+exports.stringifyMod = stringifyMod;
+
 function stringifyError(error) {
   console.error(error);
 
@@ -1030,11 +1070,11 @@ function stringifyError(error) {
     return JSON.stringify(error, Object.getOwnPropertyNames(error));
   }
 
-  if (typeof error === 'object') {
+  try {
     return JSON.stringify(error);
+  } catch (unusedError) {
+    return String(error);
   }
-
-  return error;
 }
 
 exports.stringifyError = stringifyError;
@@ -1085,8 +1125,9 @@ exports.DomWidget = DomWidget;
 class ObservableState {
   constructor(initialValue) {
     this.val = initialValue;
-    this.change = new Event();
-    exports.onMount.listen(this.change.chain);
+    this.change = new Event(); // TODO: make sure this works
+
+    this.change.trigger();
   }
 
   changeTo(val) {
@@ -1123,14 +1164,6 @@ class ResourceEndpoint {
 
   retrieveAll() {
     return this.askEndpoint('retrieveAll');
-  }
-
-  retrieveDefault() {
-    return this.askEndpoint('retrieveDefault');
-  }
-
-  retrieve(id) {
-    return this.askEndpoint('retrieve', id);
   }
 
   create(record) {
@@ -1223,32 +1256,19 @@ class ResourceObservable extends ObservableState {
 
   updateRecord(record) {
     return __awaiter(this, void 0, void 0, function* () {
-      if (this.val.status !== server_1.AskStatus.LOADED) {
-        return this.val;
-      }
-
-      const ask = yield this.endpoint.update(record);
-
-      if (ask.status == server_1.AskStatus.LOADED) {
-        // update the client to match the server (sync)
-        this.val.val[String(record.id)] = record;
-        this.change.trigger();
-      }
-
-      return ask;
+      if (this.val.status === server_1.AskStatus.ERROR) return this.val;
+      this.val.val[String(record.id)] = record;
+      this.change.trigger();
+      return yield this.endpoint.update(record);
     });
   }
 
   createRecord(record) {
     return __awaiter(this, void 0, void 0, function* () {
+      if (this.val.status === server_1.AskStatus.ERROR) return this.val;
       const ask = yield this.endpoint.create(record);
 
-      if (this.val.status !== server_1.AskStatus.LOADED) {
-        return this.val;
-      }
-
-      if (ask.status == server_1.AskStatus.LOADED) {
-        // update the client to match the server (sync)
+      if (ask.status !== server_1.AskStatus.ERROR) {
         this.val.val[String(ask.val.id)] = ask.val;
         this.change.trigger();
       }
@@ -1259,15 +1279,10 @@ class ResourceObservable extends ObservableState {
 
   deleteRecord(id) {
     return __awaiter(this, void 0, void 0, function* () {
-      const ask = yield this.endpoint.delete(id);
-
-      if (ask.status == server_1.AskStatus.LOADED && this.val.status == server_1.AskStatus.LOADED) {
-        // update the client to match the server (sync)
-        delete this.val.val[String(id)];
-        this.change.trigger();
-      }
-
-      return ask;
+      if (this.val.status === server_1.AskStatus.ERROR) return this.val;
+      delete this.val.val[String(id)];
+      this.change.trigger();
+      return yield this.endpoint.delete(id);
     });
   }
 
@@ -1313,8 +1328,13 @@ class Resource {
   }
 
   createLabel(id, builder) {
-    const record = this.state.getRecordOrFail(id);
-    return builder.call(null, record);
+    try {
+      const record = this.state.getRecordOrFail(id);
+      return builder.call(null, record);
+    } catch (e) {
+      console.error(e);
+      return `(??? UNKNOWN #${String(id)} ???)`;
+    }
   } // The edit window is kind of combined with the view window.
 
 
@@ -1322,7 +1342,6 @@ class Resource {
     return __awaiter(this, void 0, void 0, function* () {
       let record = null;
       let errorMessage = '';
-      let windowLabel = 'ERROR in: ' + this.info.title + ' #' + id;
 
       try {
         function capitalizeWord(w) {
@@ -1331,13 +1350,21 @@ class Resource {
 
         yield this.state.getRecordCollectionOrFail();
         record = this.state.getRecordOrFail(id);
-        windowLabel = capitalizeWord(this.info.title) + ': ' + this.createLabel(id, this.info.makeLabel);
+        const windowLabel = capitalizeWord(this.info.title) + ': ' + this.createLabel(id, this.info.makeLabel);
         const form = this.makeFormWidget();
         form.setAllValues(record);
         const {
           closeWindow
-        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), form.dom), ActionBar_1.ActionBarWidget([['Delete', () => this.makeTiledDeleteWindow(id)], ['Save', () => this.endpoint.update(form.getAllValues())], ['Close', () => closeWindow()]]).dom, windowLabel);
+        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), form.dom), ActionBar_1.ActionBarWidget([['Delete', () => this.makeTiledDeleteWindow(id, () => closeWindow())], ['Save', () => __awaiter(this, void 0, void 0, function* () {
+          closeWindow();
+          const ask = yield this.state.updateRecord(form.getAllValues());
+
+          if (ask.status === server_1.AskStatus.ERROR) {
+            alertError(ask.message);
+          }
+        })], ['Close', () => closeWindow()]]).dom, windowLabel);
       } catch (err) {
+        const windowLabel = 'ERROR in: ' + this.info.title + ' #' + id;
         errorMessage = stringifyError(err);
         const {
           closeWindow
@@ -1349,11 +1376,10 @@ class Resource {
   makeTiledCreateWindow() {
     return __awaiter(this, void 0, void 0, function* () {
       let errorMessage = '';
-      let windowLabel = 'ERROR in: create new ' + this.info.title;
 
       try {
         yield this.state.getRecordCollectionOrFail();
-        windowLabel = 'Create new ' + this.info.title;
+        const windowLabel = 'Create new ' + this.info.title;
         const form = this.makeFormWidget();
         form.setAllValues({
           id: -1,
@@ -1362,15 +1388,15 @@ class Resource {
         const {
           closeWindow
         } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), form.dom), ActionBar_1.ActionBarWidget([['Create', () => __awaiter(this, void 0, void 0, function* () {
-          const ask = yield this.state.createRecord(form.getAllValues());
-
-          if (ask.status === server_1.AskStatus.ERROR) {
-            alert('ERROR!\n' + stringifyError(ask.message));
+          try {
+            server_1.getResultOrFail((yield this.state.createRecord(form.getAllValues())));
+            closeWindow();
+          } catch (err) {
+            alertError(err);
           }
-
-          closeWindow();
-        })], ['Close', () => closeWindow()]]).dom, windowLabel);
+        })], ['Cancel', () => closeWindow()]]).dom, windowLabel);
       } catch (err) {
+        const windowLabel = 'ERROR in: create new ' + this.info.title;
         errorMessage = stringifyError(err);
         const {
           closeWindow
@@ -1383,12 +1409,11 @@ class Resource {
     return __awaiter(this, void 0, void 0, function* () {
       let recordCollection = null;
       let errorMessage = '';
-      let windowLabel = 'ERROR in: view all ' + this.info.pluralTitle;
 
       try {
         const onLoad = new Event();
         recordCollection = yield this.state.getRecordCollectionOrFail();
-        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat('View'), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget('View', () => {
+        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat('View & edit'), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget('View & edit', () => {
           closeThisWindow();
           this.makeTiledEditWindow(record.id);
         }).dom));
@@ -1396,29 +1421,33 @@ class Resource {
           recordCollection = this.state.getLoadedOrFail();
           table.setAllValues(recordCollection);
         });
-        windowLabel = 'View all ' + this.info.pluralTitle;
+        const windowLabel = 'View all ' + this.info.pluralTitle;
         const {
           closeWindow
-        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), table.dom), ActionBar_1.ActionBarWidget([['Create', () => this.makeTiledCreateWindow()], ['Close', () => closeWindow()]]).dom, windowLabel, onLoad);
+        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), table.dom), ActionBar_1.ActionBarWidget([['Create', () => {
+          closeWindow();
+          this.makeTiledCreateWindow();
+        }], ['Close', () => closeWindow()]]).dom, windowLabel, onLoad);
 
         function closeThisWindow() {
           closeWindow();
         }
       } catch (err) {
         errorMessage = stringifyError(err);
+        const windowLabel = 'ERROR in: view all ' + this.info.pluralTitle;
         const {
           closeWindow
-        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Create', () => this.makeTiledCreateWindow()], ['Close', () => closeWindow()]]).dom, windowLabel);
+        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
       }
     });
   }
 
-  makeTiledDeleteWindow(id) {
+  makeTiledDeleteWindow(id, closeParentWindow) {
     const windowLabel = 'Delete this ' + this.info.title + '? (' + this.createLabel(id, record => record.friendlyFullName) + ')';
     const {
       windowWidget,
       closeWindow
-    } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')('Delete?'), container('<p></p>')('Are you sure you want to delete this?')), ActionBar_1.ActionBarWidget([['Delete', () => this.endpoint.delete(id).then(() => alert('Deletion successful!'))], ['Cancel', () => closeWindow]]).dom, windowLabel);
+    } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')('Delete?'), container('<p></p>')('Are you sure you want to delete this?')), ActionBar_1.ActionBarWidget([['Delete', () => this.state.deleteRecord(id).then(() => closeParentWindow()).then(() => closeWindow()).catch(err => alertError(err))], ['Cancel', () => closeWindow]]).dom, windowLabel);
     return windowWidget;
   }
 
@@ -1431,8 +1460,6 @@ IMPORTANT GLOBALS
 
 */
 
-exports.onReady = new Event();
-exports.onMount = new Event();
 exports.state = {
   tiledWindows: new ObservableState([])
 };
@@ -1520,25 +1547,21 @@ function showWindow(windowKey) {
 exports.showWindow = showWindow;
 
 function processResourceInfo(conf) {
+  conf.fields.push(['id', ui_1.NumberField('number')], ['date', ui_1.NumberField('datetime-local')]);
   let fields = [];
 
   for (const [name, type] of conf.fields) {
-    fields.push({
-      title: conf.fieldNameMap[name],
+    const x = conf.fieldNameMap[name];
+    fields.push(Object.assign({
+      title: typeof x === 'string' ? x : x[0]
+    }, Array.isArray(x) && {
+      info: x[1]
+    }, {
       name,
       type
-    });
+    }));
   }
 
-  fields = fields.concat([{
-    title: 'ID',
-    name: 'id',
-    type: ui_1.NumberField('number')
-  }, {
-    title: 'Date',
-    name: 'date',
-    type: ui_1.NumberField('datetime-local')
-  }]);
   return {
     fields,
     makeTableRowContent: conf.makeTableRowContent,
@@ -1552,7 +1575,7 @@ function processResourceInfo(conf) {
 exports.processResourceInfo = processResourceInfo;
 
 function makeBasicStudentConfig() {
-  return [['firstName', ui_1.StringField('text')], ['lastName', ui_1.StringField('text')], ['friendlyName', ui_1.StringField('text')], ['friendlyFullName', ui_1.StringField('text')], ['grade', ui_1.NumberField('number')]];
+  return [['firstName', ui_1.StringField('text')], ['lastName', ui_1.StringField('text')], ['friendlyName', ui_1.StringField('text')], ['friendlyFullName', ui_1.StringField('text')], ['grade', ui_1.NumberField('number')], ['studentId', ui_1.NumberField('number')], ['email', ui_1.StringField('email')], ['phone', ui_1.StringField('string')], ['contactPref', ui_1.SelectField(['email', 'phone', 'either'], ['Email', 'Phone', 'Either'])]];
 }
 
 exports.makeBasicStudentConfig = makeBasicStudentConfig;
@@ -1561,19 +1584,28 @@ const fieldNameMap = {
   lastName: 'Last name',
   friendlyName: 'Friendly name',
   friendlyFullName: 'Friendly full name',
-  grade: 'Grade',
-  learner: 'Learner',
-  tutor: 'Tutor',
+  grade: ['Grade', 'A number from 9-12'],
+  learner: ['Learner', 'This is an ID. You usually will not need to edit this by hand.'],
+  tutor: ['Tutor', 'This is an ID. You usually will not need to edit this by hand.'],
+  attendance: ['Attendance data', 'Do not edit this by hand.'],
   status: 'Status',
-  mods: 'Mods',
-  mod: 'Mod',
-  modsPref: 'Preferred mods',
+  mods: ['Mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
+  dropInMods: ['Drop-in mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
+  mod: ['Mod', 'A number from 1-20, corresponding to 1A-10B'],
+  modsPref: ['Preferred mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
   subjectList: 'Subjects',
-  request: 'Request',
-  subject: 'Subject(s)'
+  request: ['Request', 'This is an ID. You usually will not need to edit this by hand.'],
+  subject: 'Subject(s)',
+  studentId: 'Student ID',
+  email: 'Email',
+  phone: 'Phone',
+  contactPref: 'Contact preference',
+  specialRoom: ['Special tutoring room', `Leave blank if the student isn't in special tutoring`],
+  id: ['ID', `Do not modify unless you really know what you're doing!`],
+  date: ['Date', 'Date of creation -- do not change']
 };
 const tutorsInfo = {
-  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['modsPref', ui_1.NumberArrayField('number')], ['subjectList', ui_1.StringField('text')]],
+  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['modsPref', ui_1.NumberArrayField('number')], ['subjectList', ui_1.StringField('text')], ['attendance', ui_1.JsonField({})], ['dropInMods', ui_1.NumberArrayField('number')]],
   fieldNameMap,
   tableFieldTitles: ['Name', 'Grade', 'Mods', 'Subjects'],
   makeTableRowContent: record => [exports.tutors.createMarker(record.id, x => x.friendlyFullName), record.grade, generateStringOfMods(record.mods, record.modsPref), record.subjectList],
@@ -1582,7 +1614,7 @@ const tutorsInfo = {
   makeLabel: record => record.friendlyFullName
 };
 const learnersInfo = {
-  fields: [...makeBasicStudentConfig()],
+  fields: [...makeBasicStudentConfig(), ['attendance', ui_1.JsonField({})]],
   fieldNameMap,
   tableFieldTitles: ['Name', 'Grade'],
   makeTableRowContent: record => [exports.learners.createMarker(record.id, x => x.friendlyFullName), record.grade],
@@ -1591,13 +1623,13 @@ const learnersInfo = {
   makeLabel: record => record.friendlyFullName
 };
 const requestsInfo = {
-  fields: [['learner', ui_1.NumberField('id')], ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')]],
+  fields: [['learner', ui_1.NumberField('id')], ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')], ['specialRoom', ui_1.StringField('text')]],
   fieldNameMap,
   tableFieldTitles: ['Learner', 'Subject', 'Mods'],
   makeTableRowContent: record => [exports.learners.createMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(', ')],
   title: 'request',
   pluralTitle: 'requests',
-  makeLabel: record => exports.learners.createLabel(record.id, x => x.friendlyFullName)
+  makeLabel: record => exports.learners.createLabel(record.learner, x => x.friendlyFullName)
 };
 const bookingsInfo = {
   fields: [['request', ui_1.NumberField('id')], ['tutor', ui_1.NumberField('id')], ['mod', ui_1.NumberField('number')], ['status', ui_1.SelectField(['unsent', 'waitingForTutor', 'waitingForLearner', 'finalized', 'rejected', 'rejectedByTutor', 'rejectedByLearner'], ['Unsent', 'Waiting for tutor', 'Waiting for learner', 'Finalized', 'Rejected', 'Rejected by tutor', 'Rejected by learner'])]],
@@ -1606,10 +1638,10 @@ const bookingsInfo = {
   makeTableRowContent: record => [exports.learners.createMarker(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createMarker(record.tutor, x => x.friendlyFullName), record.mod, record.status],
   title: 'booking',
   pluralTitle: 'bookings',
-  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + ' <> ' + exports.learners.state.getRecordOrFail(record.tutor).friendlyFullName
+  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + ' <> ' + exports.learners.state.getRecordOrFail(exports.requests.state.getRecordOrFail(record.request).learner).friendlyFullName
 };
 const matchingsInfo = {
-  fields: [['learner', ui_1.StringField('text')], ['tutor', ui_1.StringField('text')], ['subject', ui_1.StringField('text')], ['mod', ui_1.NumberField('number')], ['status', ui_1.SelectField(['unwritten', 'unsent', 'finalized'], ['Unwritten', 'Unsent', 'Finalized'])]],
+  fields: [['learner', ui_1.StringField('text')], ['tutor', ui_1.StringField('text')], ['subject', ui_1.StringField('text')], ['mod', ui_1.NumberField('number')], ['status', ui_1.SelectField(['unwritten', 'unsent', 'finalized'], ['Unwritten', 'Unsent', 'Finalized'])], ['specialRoom', ui_1.StringField('text')]],
   fieldNameMap,
   tableFieldTitles: ['Learner', 'Tutor', 'Mod', 'Subject', 'Status'],
   makeTableRowContent: record => [exports.learners.createMarker(record.learner, x => x.friendlyFullName), exports.tutors.createMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject, record.status],
@@ -1618,7 +1650,7 @@ const matchingsInfo = {
   makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + ' <> ' + exports.learners.state.getRecordOrFail(record.learner).friendlyFullName
 };
 const requestSubmissionsInfo = {
-  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')]],
+  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')], ['specialRoom', ui_1.StringField('text')], ['status', ui_1.SelectField(['unchecked', 'checked'], ['Unchecked', 'Checked'])]],
   fieldNameMap,
   tableFieldTitles: ['Name', 'Mods', 'Subject'],
   makeTableRowContent: record => [record.friendlyFullName, record.mods.join(', '), record.subject],
@@ -1823,37 +1855,34 @@ function isOperationConfirmedByUser(args) {
 
 const pillsString = `
 <ul class="nav nav-pills">
-    <li class="nav-item">
-        <a class="nav-link">Tutors</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Learners</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Requests</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Request submissions</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Bookings</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Matchings</a>
+    <li class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">View, edit, and add information</a>
+        <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item">Tutors</a>
+            <a class="dropdown-item">Learners</a>
+            <a class="dropdown-item">Requests</a>
+            <a class="dropdown-item">Request submissions</a>
+            <a class="dropdown-item">Bookings</a>
+            <a class="dropdown-item">Matchings</a>
+        </div>
     </li>
     <li class="nav-item dropdown">
-        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Steps</a>
-        <div class="dropdown-menu">
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Scheduling workflow</a>
+        <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">Check request submissions</a>
             <a class="dropdown-item">Handle requests and bookings</a>
             <a class="dropdown-item">Finalize matchings</a>
         </div>
     </li>
+    <li class="nav-item">
+        <a class="nav-link">Attendance</a>
+    </li>
     <li class="nav-item dropdown">
         <a class="nav-link dropdown-toggle" data-toggle="dropdown">Other</a>
-        <div class="dropdown-menu">
+        <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">About</a>
             <a class="dropdown-item">Force refresh</a>
+            <a class="dropdown-item">Testing mode</a>
         </div>
     </li>
 </ul>`;
@@ -1862,13 +1891,13 @@ function simpleStepWindow(defaultWindowLabel, makeContent) {
   return __awaiter(this, void 0, void 0, function* () {
     if (typeof defaultWindowLabel === 'string') defaultWindowLabel = shared_1.container('<span></span>')(defaultWindowLabel);
     let errorMessage = '';
-    let windowLabel = 'ERROR in: ' + defaultWindowLabel.text();
 
     try {
       const {
         closeWindow
       } = Window_1.useTiledWindow(shared_1.container('<div></div>')(shared_1.container('<h1></h1>')(defaultWindowLabel), makeContent(() => closeWindow)), ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, defaultWindowLabel.text());
     } catch (err) {
+      const windowLabel = 'ERROR in: ' + defaultWindowLabel.text();
       errorMessage = shared_1.stringifyError(err);
       const {
         closeWindow
@@ -1891,14 +1920,16 @@ function checkRequestSubmissionsStep() {
         function attemptConversion() {
           return __awaiter(this, void 0, void 0, function* () {
             // CREATE LEARNER
-            const learnerRecords = Object.values(shared_1.learners.state.getRecordCollectionOrFail()).filter(x => x.firstName == record.firstName && x.lastName == record.lastName);
+            // try to dig up a learner with matching student ID, which would mean
+            // that the learner already exists in the database
+            const matches = Object.values(shared_1.learners.state.getRecordCollectionOrFail()).filter(x => x.studentId === record.studentId);
             let learnerRecord;
 
-            if (learnerRecords.length > 1) {
-              // duplicate learner names??
+            if (matches.length > 1) {
+              // duplicate learner student IDs??
               // this should be validated in the database
-              throw new Error('duplicate learner names: ' + String(record.firstName) + '/' + String(record.lastName));
-            } else if (learnerRecords.length == 0) {
+              throw new Error(`duplicate student id: "${record.studentId}"`);
+            } else if (matches.length == 0) {
               // create new learner
               learnerRecord = server_1.getResultOrFail((yield shared_1.learners.state.createRecord({
                 firstName: record.firstName,
@@ -1907,11 +1938,16 @@ function checkRequestSubmissionsStep() {
                 friendlyFullName: record.friendlyFullName,
                 grade: record.grade,
                 id: -1,
-                date: -1
+                date: -1,
+                studentId: record.studentId,
+                email: record.email,
+                phone: record.phone,
+                contactPref: record.contactPref,
+                attendance: {}
               })));
             } else {
               // learner already exists
-              learnerRecord = shared_1.learners[0];
+              learnerRecord = matches[0];
             } // CREATE REQUEST
 
 
@@ -1920,12 +1956,14 @@ function checkRequestSubmissionsStep() {
               id: -1,
               date: -1,
               mods: record.mods,
-              subject: record.subject
-            }))); // DELETE REQUEST SUBMISSION
+              subject: record.subject,
+              specialRoom: record.specialRoom
+            }))); // MARK REQUEST SUBMISSION AS CHECKED
             // NOTE: this is only done if the above steps worked
             // so if there's an error, the request submission won't be obliterated
 
-            server_1.getResultOrFail((yield shared_1.requestSubmissions.state.deleteRecord(record.id)));
+            record.status = 'checked';
+            server_1.getResultOrFail((yield shared_1.requestSubmissions.state.updateRecord(record)));
           });
         }
 
@@ -1938,14 +1976,12 @@ function checkRequestSubmissionsStep() {
               closeWindow()();
               yield attemptConversion();
             } catch (err) {
-              alert(shared_1.stringifyError(err));
+              shared_1.alertError(err);
             }
           }
         })).dom];
-      }); // Because request submissions are deleted as soon as they are processed into requests, there is no need to distinguish between "unfinalized" and "finalized" request submissions.
-      // Thus, there is no filter for this step.
-
-      table.setAllValues(recordCollection);
+      });
+      table.setAllValues(Object.values(recordCollection).filter(x => x.status === 'unchecked'));
       return table.dom;
     });
   });
@@ -2003,14 +2039,14 @@ function handleRequestsAndBookingsStep() {
         const y = requestsIndex[String(x.request)];
         if (y.currentStatus == 'Matched') continue;
 
-        if (x.status == 'unsent') {
-          y.currentStatus = 'unsent';
-        }
-
-        if (y.currentStatus == 'Unsent') continue;
-
         if (x.status.startsWith('waiting')) {
           y.currentStatus = 'Waiting';
+        }
+
+        if (y.currentStatus == 'Waiting') continue;
+
+        if (x.status == 'unsent') {
+          y.currentStatus = 'Unsent';
         }
       }
 
@@ -2027,24 +2063,24 @@ function showRequestBookerStep(requestId) {
       const bookingRecords = shared_1.bookings.state.getRecordCollectionOrFail();
       const tutorRecords = shared_1.tutors.state.getRecordCollectionOrFail();
       const table = Table_1.TableWidget(['Booking', 'Mark as...', 'Todo', 'Finalize'], booking => {
-        const formSelectWidget = ui_1.FormSelectWidget(['unsent', 'waitingForLearner', 'waitingForTutor', 'rejected', 'rejectedByLearner', 'rejectedByTutor'], ['Unsent', 'Waiting for learner', 'Waiting for tutor', 'Rejected by learner', 'Rejected by tutor', 'Rejected for other reason']);
+        const formSelectWidget = ui_1.FormSelectWidget(['unsent', 'waitingForTutor', 'waitingForLearner', 'rejectedByTutor', 'rejectedByLearner', 'rejected'], ['Unsent', 'Waiting for tutor', 'Waiting for learner', 'Rejected by tutor', 'Rejected by learner', 'Rejected for other reason']);
         formSelectWidget.setValue(booking.status);
         formSelectWidget.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
           booking.status = newVal;
           const response = yield shared_1.bookings.state.updateRecord(booking);
 
           if (response.status === server_1.AskStatus.ERROR) {
-            alert('ERROR!\n' + response.message);
+            shared_1.alertError(response.message);
           }
         }));
         return [shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + ' <> ' + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName), formSelectWidget.dom, ui_1.ButtonWidget('Todo', () => showBookingMessagerStep(booking.id)).dom, ui_1.ButtonWidget('Finalize', () => {
-          finalizeBookingsStep(booking.id, closeWindow());
+          finalizeBookingsStep(booking.id, () => closeWindow()());
         }).dom];
       }); // LOGIC: We use a toggle structure where:
       // - There is a row of mod buttons
       // - There is add functionality, but not delete functionality (bookings can be individually deleted)
       // - Toggling the button toggles entries in a temporary array of all added bookings [[tutor, mod]] via. filters
-      // - Clicking "Save your bookings" will write to the database
+      // - Clicking "Save bookings and close" will write to the database
 
       let bookingsInfo = [];
       const potentialTable = Table_1.TableWidget(['Tutor', '# times booked', 'Book for mods...'], ({
@@ -2083,13 +2119,14 @@ function showRequestBookerStep(requestId) {
 
         return [shared_1.tutors.createMarker(tutorId, x => x.friendlyFullName), String(numBookings), buttonsDom];
       });
-      const saveBookingsButton = ui_1.ButtonWidget('Save your bookings', () => __awaiter(this, void 0, void 0, function* () {
+      const saveBookingsButton = ui_1.ButtonWidget('Save bookings and close', () => __awaiter(this, void 0, void 0, function* () {
+        closeWindow()();
+
         try {
           for (const {
             tutorId,
             mod
           } of bookingsInfo) {
-            closeWindow()();
             const ask = yield shared_1.bookings.state.createRecord({
               id: -1,
               date: -1,
@@ -2104,7 +2141,7 @@ function showRequestBookerStep(requestId) {
             }
           }
         } catch (err) {
-          alert(err);
+          shared_1.alertError(err);
         }
       }));
       table.setAllValues(Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id))); // LOGIC: calculating which tutors work for this request
@@ -2175,17 +2212,17 @@ function showBookingMessagerStep(bookingId) {
 
       if (b.status === 'unsent') {
         dom.append($('<p>Because status is "unsent", send the message to the tutor:</p>'));
-        dom.append(ui_1.MessageTemplateWidget(`Hi! Can you tutor a student in ${r.subject} on mod ${b.mod}?`).dom);
-        dom.append($('<p>Once you send the message, go back and set the status to "waiting for learner".</p>'));
-      }
-
-      if (b.status === 'waitingForLearner') {
-        dom.append($('<p>You are waiting for the learner. Once the tutor replies, send a message to the learner:</p>'));
-        dom.append(ui_1.MessageTemplateWidget(`Hi! We have a tutor for you on mod ${b.mod}. Can you come?`).dom);
+        dom.append(ui_1.MessageTemplateWidget(`Hi! Can you tutor a student in ${r.subject} on mod ${shared_1.stringifyMod(b.mod)}?`).dom);
         dom.append($('<p>Once you send the message, go back and set the status to "waiting for tutor".</p>'));
       }
 
       if (b.status === 'waitingForTutor') {
+        dom.append($('<p>You are waiting for the tutor. Once the tutor replies, send a message to the learner:</p>'));
+        dom.append(ui_1.MessageTemplateWidget(`Hi! We have a tutor for you on mod ${shared_1.stringifyMod(b.mod)}. Can you come?`).dom);
+        dom.append($('<p>Once you send the message, go back and set the status to "waiting for learner".</p>'));
+      }
+
+      if (b.status === 'waitingForLearner') {
         dom.append($('<p>You are waiting for the learner. Once the learner replies, if everything is good, go back and click "finalize".</p>'));
       }
 
@@ -2197,7 +2234,7 @@ function showBookingMessagerStep(bookingId) {
 function finalizeBookingsStep(bookingId, onVerify) {
   return __awaiter(this, void 0, void 0, function* () {
     if (yield isOperationConfirmedByUser({
-      thisOpDoes: ['Assigns the tutor to the learner, replacing the booking with a matching (this can be undone by deleting the matching and rebooking the )', 'Deletes all other bookings associated with the learner'],
+      thisOpDoes: ['Assigns the tutor to the learner, replacing the booking with a matching (this can be undone by deleting the matching and rebooking)', 'Deletes all other bookings associated with the learner'],
       makeSureThat: ['The tutor and learner really should be matched']
     })) {
       onVerify();
@@ -2212,6 +2249,7 @@ function finalizeBookingsStep(bookingId, onVerify) {
           subject: r.subject,
           mod: b.mod,
           status: 'unwritten',
+          specialRoom: r.specialRoom,
           id: -1,
           date: -1
         });
@@ -2252,7 +2290,7 @@ function finalizeMatchingsStep() {
           const response = yield shared_1.matchings.state.updateRecord(record);
 
           if (response.status === server_1.AskStatus.ERROR) {
-            alert('ERROR!\n' + response.message);
+            shared_1.alertError(response.message);
           }
         }));
         return [shared_1.learners.createLabel(record.learner, x => x.friendlyFullName) + '<>' + shared_1.tutors.createLabel(record.tutor, x => x.friendlyFullName), formSelectWidget.dom, ui_1.ButtonWidget('Send', () => {
@@ -2274,7 +2312,7 @@ function showMatchingSender(matchingId) {
     yield simpleStepWindow(shared_1.container('<span></span>')('Send matching: ', shared_1.learners.createMarker(m.learner, x => x.friendlyFullName), ' <> ', shared_1.tutors.createMarker(m.tutor, x => x.friendlyFullName)), closeWindow => {
       const t = shared_1.tutors.state.getRecordOrFail(m.tutor);
       const l = shared_1.learners.state.getRecordOrFail(m.learner);
-      return shared_1.container('<div></div>')('Send this to the learner.', ui_1.MessageTemplateWidget(`You will be tutored by ${t.friendlyFullName} during mod ${m.mod}.`), 'Then, send this to the tutor.', ui_1.MessageTemplateWidget(`You will be tutoring ${l.friendlyFullName} during mod ${m.mod}.`).dom);
+      return shared_1.container('<div></div>')('Send this to the learner.', ui_1.MessageTemplateWidget(`You will be tutored by ${t.friendlyFullName} during mod ${shared_1.stringifyMod(m.mod)}.`).dom, 'Then, send this to the tutor.', ui_1.MessageTemplateWidget(`You will be tutoring ${l.friendlyFullName} during mod ${shared_1.stringifyMod(m.mod)}.`).dom);
     });
   });
 }
@@ -2291,6 +2329,78 @@ function finalizeMatching(matchingId, onVerify) {
       r.status = 'finalized';
       shared_1.matchings.state.updateRecord(r);
     }
+  });
+}
+
+function attendanceStep() {
+  return __awaiter(this, void 0, void 0, function* () {
+    yield simpleStepWindow('Attendance', _closeWindow => {
+      const t = Object.values(shared_1.tutors.state.getRecordCollectionOrFail());
+      const l = Object.values(shared_1.learners.state.getRecordCollectionOrFail());
+      const table = Table_1.TableWidget( // Both learners and tutors are students.
+      ['Student', 'Total minutes', 'Attendance level', 'Details'], ({
+        isLearner,
+        student
+      }) => {
+        // calculate the attendance level & totals
+        let numPresent = 0;
+        let numAbsent = 0;
+        let totalMinutes = 0;
+
+        for (const x of Object.values(student.attendance)) {
+          for (const {
+            minutes
+          } of x) {
+            if (minutes > 0) {
+              ++numPresent;
+            } else {
+              ++numAbsent;
+            }
+
+            totalMinutes += minutes;
+          }
+        }
+
+        return [(isLearner ? shared_1.learners : shared_1.tutors).createLabel(student.id, x => x.friendlyFullName), String(totalMinutes), `${numPresent}P / ${numAbsent}A`, ui_1.ButtonWidget('Details', () => {
+          attendanceDetailsStep({
+            isLearner,
+            student
+          });
+        }).dom];
+      });
+      table.setAllValues(t.map(x => ({
+        isLearner: false,
+        student: x
+      })).concat(l.map(x => ({
+        isLearner: true,
+        student: x
+      }))));
+      return table.dom;
+    });
+  });
+}
+
+function attendanceDetailsStep({
+  isLearner,
+  student
+}) {
+  return __awaiter(this, void 0, void 0, function* () {
+    yield simpleStepWindow(shared_1.container('<span>')('Attendance for ', (isLearner ? shared_1.learners : shared_1.tutors).createMarker(student.id, x => x.friendlyFullName)), _closeWindow => {
+      const table = Table_1.TableWidget( // Both learners and tutors are students.
+      ['Date', 'Mod', 'Present?'], attendanceEntry => {
+        return [new Date(attendanceEntry.date).toISOString().substring(0, 10), String(attendanceEntry.mod), attendanceEntry.minutes > 0 ? `P (${attendanceEntry.minutes} minutes)` : $('<span style="color:red">ABSENT</span>')];
+      });
+      const attendanceData = [];
+
+      for (const x of Object.values(student.attendance)) {
+        for (const y of x) {
+          attendanceData.push(y);
+        }
+      }
+
+      table.setAllValues(attendanceData);
+      return table.dom;
+    });
   });
 }
 /*
@@ -2327,6 +2437,22 @@ function rootWidget() {
         }
       }
 
+      if (text == 'Testing mode') {
+        window['APP_DEBUG_MOCK'] = 1;
+        shared_1.tutors.state.forceRefresh();
+        shared_1.learners.state.forceRefresh();
+        shared_1.bookings.state.forceRefresh();
+        shared_1.matchings.state.forceRefresh();
+        shared_1.requests.state.forceRefresh();
+        shared_1.requestSubmissions.state.forceRefresh();
+
+        for (const window of shared_1.state.tiledWindows.val) {
+          window.onLoad.trigger();
+        }
+
+        ui_1.showModal('Testing mode loaded', 'The app has been disconnected from the actual database/forms and replaced with a blank test database with no data. Start by creating a tutor, learner, and request submission.', bb => [bb('OK', 'primary')]);
+      }
+
       if (text == 'Check request submissions') {
         checkRequestSubmissionsStep();
       }
@@ -2338,13 +2464,17 @@ function rootWidget() {
       if (text == 'Finalize matchings') {
         finalizeMatchingsStep();
       }
+
+      if (text == 'Attendance') {
+        attendanceStep();
+      }
     });
     return {
       dom
     };
   }
 
-  const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit">')(PillsWidget().dom), shared_1.container('<nav class="navbar layout-item-fit layout-v"></div>')(WindowsBar_1.WindowsBarWidget().dom), shared_1.container('<div class="layout-item-scroll"></div>')(TilingWindowManager_1.TilingWindowManagerWidget().dom));
+  const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit">')($('<strong class="mr-4">ARC</strong>'), PillsWidget().dom), shared_1.container('<nav class="navbar layout-item-fit layout-v"></div>')(WindowsBar_1.WindowsBarWidget().dom), shared_1.container('<div class="layout-item-scroll"></div>')(TilingWindowManager_1.TilingWindowManagerWidget().dom));
   return {
     dom
   };
@@ -2390,13 +2520,19 @@ const shared_1 = require("./core/shared");
 
 const widget_1 = require("./core/widget");
 
-$(document).ready(shared_1.onReady.chain);
-shared_1.onReady.listen(() => __awaiter(this, void 0, void 0, function* () {
+console.log('hi there!');
+
+window['appOnReady'] = () => __awaiter(this, void 0, void 0, function* () {
   // TODO: replace with proper loading widget
-  $('#app').replaceWith($('<h1 id="app">Loading...</h1>'));
+  $('body').append($('<h1 id="app">Loading...</h1>'));
   yield shared_1.initializeResources();
-  $('#app').replaceWith(widget_1.rootWidget().dom);
-  shared_1.onMount.trigger();
-}));
+  $('body').empty();
+  $('body').append(widget_1.rootWidget().dom);
+});
+
+$(document).ready(window['appOnReady']);
 },{"./core/shared":"m0/6","./core/widget":"o4ND"}]},{},["7QCb"], null)
-//# sourceMappingURL=/src.97c3945d.js.map
+
+
+/* Automatically built on 2019-07-02 20:33:38 */
+
