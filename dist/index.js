@@ -156,31 +156,52 @@ const shared_1 = require("./shared");
 
 function failAfterFiveSeconds(p) {
   return new Promise((res, rej) => {
-    setTimeout(() => rej({
+    setTimeout(() => rej(JSON.stringify({
       error: true,
-      message: 'Server is not responding'
-    }), 5000);
+      message: 'Server is not responding',
+      val: null
+    })), 5000);
     p.then(res);
   });
 }
 
-function convertServerResponseToAskFinished(response) {
-  if (response.error) {
+function convertServerStringToAskFinished(str) {
+  try {
+    if (typeof str !== 'string') {
+      throw new Error('server response not in correct type');
+    } else {
+      try {
+        const response = JSON.parse(str);
+
+        if (typeof response !== 'object' || typeof response.error !== 'boolean') {
+          throw new Error('server response not in correct type');
+        } else if (response.error) {
+          const v = {
+            status: AskStatus.ERROR,
+            message: response.message
+          };
+          return v;
+        } else {
+          const v = {
+            status: AskStatus.LOADED,
+            val: response.val
+          };
+          return v;
+        }
+      } catch (err) {
+        throw new Error('parsing issue >> ' + shared_1.stringifyError(err));
+      }
+    }
+  } catch (err) {
     const v = {
       status: AskStatus.ERROR,
-      message: response.message
-    };
-    return v;
-  } else {
-    const v = {
-      status: AskStatus.LOADED,
-      val: response.val
+      message: 'during convert >> ' + shared_1.stringifyError(err)
     };
     return v;
   }
 }
 
-exports.convertServerResponseToAskFinished = convertServerResponseToAskFinished;
+exports.convertServerStringToAskFinished = convertServerStringToAskFinished;
 
 function getResultOrFail(askFinished) {
   if (askFinished.status == AskStatus.ERROR) {
@@ -194,10 +215,30 @@ exports.getResultOrFail = getResultOrFail;
 
 function askServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    console.log('[server] args', args);
-    const result = yield failAfterFiveSeconds(realServer(args));
-    console.log('[server] result', result);
-    return convertServerResponseToAskFinished(result);
+    let result = JSON.stringify({
+      error: true,
+      val: null,
+      message: 'Mysterious error'
+    });
+
+    try {
+      if (window['APP_DEBUG_MOCK'] !== 1) {
+        console.log('[server]    args', args);
+        result = yield failAfterFiveSeconds(realServer(args));
+        console.log('[server]  result', args, '=>', result);
+      } else {
+        console.log('[MOCK server]   args', args);
+        result = yield failAfterFiveSeconds(mockServer(args));
+        console.log('[MOCK server] result', args, '=>', result);
+      }
+    } catch (err) {
+      result = JSON.stringify({
+        status: AskStatus.ERROR,
+        message: 'askserver error >> ' + shared_1.stringifyError(err)
+      });
+    }
+
+    return convertServerStringToAskFinished(result);
   });
 }
 
@@ -271,8 +312,6 @@ class MockResourceServerEndpoint {
   }
 
   processClientAsk(args) {
-    console.log('[mock server] endpoint', this.resource().name, args);
-
     if (args[0] === 'retrieveAll') {
       return this.success(this.contents);
     }
@@ -324,92 +363,75 @@ class MockResourceServerEndpoint {
 }
 
 exports.mockResourceServerEndpoints = {
-  tutors: new MockResourceServerEndpoint(() => shared_1.tutors, {
-    '1': {
-      id: 1,
-      date: 1561334668346,
-      firstName: 'John',
-      lastName: 'Doe',
-      friendlyName: 'Jo',
-      friendlyFullName: 'Jo-Do',
-      grade: 12,
-      mods: [1, 2],
-      modsPref: [1],
-      subjectList: 'Geometry, Spanish'
-    },
-    '2': {
-      id: 2,
-      date: 1561335668346,
-      firstName: 'Mary',
-      lastName: 'Watson',
-      friendlyName: 'Ma',
-      friendlyFullName: 'Ma-W',
-      grade: 9,
-      mods: [3, 4],
-      modsPref: [4],
-      subjectList: 'English, French'
-    }
-  }),
-  learners: new MockResourceServerEndpoint(() => shared_1.learners, {
-    '1': {
-      id: 1,
-      date: 1561334668346,
-      firstName: 'Alex',
-      lastName: 'Doe',
-      friendlyName: 'Al',
-      friendlyFullName: 'Al-D',
-      grade: 12
-    }
-  }),
+  tutors: new MockResourceServerEndpoint(() => shared_1.tutors, {}),
+  learners: new MockResourceServerEndpoint(() => shared_1.learners, {}),
   bookings: new MockResourceServerEndpoint(() => shared_1.bookings, {}),
   matchings: new MockResourceServerEndpoint(() => shared_1.matchings, {}),
   requests: new MockResourceServerEndpoint(() => shared_1.requests, {}),
-  requestSubmissions: new MockResourceServerEndpoint(() => shared_1.requestSubmissions, {
-    '1': {
-      firstName: 'a',
-      lastName: 'b',
-      friendlyName: 'c',
-      friendlyFullName: 'd',
-      grade: 1,
-      mods: [1, 3, 4],
-      subject: 'asdf',
-      id: 1,
-      date: 1561730705297
-    }
-  })
+  requestSubmissions: new MockResourceServerEndpoint(() => shared_1.requestSubmissions, {})
 };
 
 function realServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    try {
-      const val = yield new Promise((res, rej) => {
-        window['google'].script.run.withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
-      }); // NOTE: an "error: true" response is still received by the client through withSuccessHandler().
+    function getGoogleAppsScriptEndpoint() {
+      if (window['google'] === undefined || window['google'].script === undefined) {
+        // This will be displayed to the user
+        throw 'You should turn on testing mode. Click OTHER >> TESTING MODE.';
+      }
 
-      return JSON.parse(val);
+      return window['google'].script.run;
+    }
+
+    let result = 'Mysterious error';
+
+    try {
+      result = yield new Promise((res, rej) => {
+        getGoogleAppsScriptEndpoint().withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
+      }); // NOTE: an "error: true" response is still received by the client through withSuccessHandler().
     } catch (err) {
-      return {
+      result = JSON.stringify({
         error: true,
         val: null,
         message: shared_1.stringifyError(err)
-      };
+      });
     }
+
+    if (typeof result !== 'string') {
+      result = JSON.stringify({
+        error: true,
+        val: null,
+        message: shared_1.stringifyError('not a string: ' + String(result))
+      });
+    }
+
+    return result;
   });
 }
 
 function mockServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    // only for resources so far
+    let result = 'Mysterious error'; // only for resources so far
+
     try {
       const mockArgs = JSON.parse(JSON.stringify(args));
-      return yield exports.mockResourceServerEndpoints[mockArgs[0]].replyToClientAsk(mockArgs.slice(1));
+      result = JSON.stringify((yield exports.mockResourceServerEndpoints[mockArgs[0]].replyToClientAsk(mockArgs.slice(1))));
     } catch (err) {
-      return {
+      result = JSON.stringify({
         error: true,
         val: null,
         message: shared_1.stringifyError(err)
-      };
+      });
     }
+
+    if (typeof result !== 'string') {
+      result = JSON.stringify({
+        error: true,
+        val: null,
+        message: shared_1.stringifyError('not a string: ' + String(result))
+      });
+    }
+
+    return result;
   });
 }
 },{"./shared":"m0/6"}],"IhYu":[function(require,module,exports) {
@@ -426,11 +448,12 @@ function FormWidget(fields) {
   const dom = shared_1.container('<form></form>')(fields.map(({
     title,
     type,
-    name
+    name,
+    info
   }) => {
     const widget = type();
     widgets[name] = widget;
-    return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-2 col-form-label"></label>')(title), shared_1.container('<div class="col-10"></div>')(widget.dom));
+    return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-2 col-form-label"></label>')(shared_1.container('<b></b>')(title), info && shared_1.container('<i class="ml-2"></i>')(info)), shared_1.container('<div class="col-10"></div>')(widget.dom));
   }));
   return {
     dom,
@@ -640,6 +663,29 @@ function FormStringInputWidget(type) {
 
 exports.FormStringInputWidget = FormStringInputWidget;
 
+function FormJsonInputWidget(defaultValue) {
+  const dom = $(`<input class="form-control" type="text">`);
+  dom.val(JSON.stringify(defaultValue));
+  return {
+    dom,
+
+    getValue() {
+      return JSON.parse(dom.val());
+    },
+
+    setValue(newVal) {
+      return dom.val(JSON.stringify(newVal));
+    },
+
+    onChange(doThis) {
+      dom.val(() => doThis.call(null, JSON.parse(dom.val())));
+    }
+
+  };
+}
+
+exports.FormJsonInputWidget = FormJsonInputWidget;
+
 function FormNumberInputWidget(type) {
   let dom = null;
 
@@ -740,6 +786,12 @@ function NumberField(type) {
 
 exports.NumberField = NumberField;
 
+function IdField() {
+  return () => FormNumberInputWidget('number');
+}
+
+exports.IdField = IdField;
+
 function SelectField(options, optionTitles) {
   return () => FormSelectWidget(options, optionTitles);
 }
@@ -751,6 +803,12 @@ function NumberArrayField(type) {
 }
 
 exports.NumberArrayField = NumberArrayField;
+
+function JsonField(defaultValue) {
+  return () => FormJsonInputWidget(defaultValue);
+}
+
+exports.JsonField = JsonField;
 
 function FormSubmitWidget(text) {
   return shared_1.DomWidget($('<button class="btn btn-outline-success type="submit"></button>').text(text));
@@ -841,7 +899,7 @@ function SearchItemWidget(onSubmit) {
 exports.SearchItemWidget = SearchItemWidget;
 
 function createMarkerLink(text, onClick) {
-  return $('<a style="cursor: pointer"></a>').text(text).click(onClick);
+  return $('<a style="cursor: pointer; text-decoration: underline"></a>').text(text).click(onClick);
 }
 
 exports.createMarkerLink = createMarkerLink;
@@ -982,7 +1040,14 @@ exports.MyTesting = MyTesting;
 ALL BASIC CLASSES AND BASIC UTILS
 
 */
-// This function converts mod numbers (ie. 11) into A-B-day strings (ie. 1B).
+
+function alertError(err) {
+  return __awaiter(this, void 0, void 0, function* () {
+    yield ui_1.showModal('Error!', container('<div>')($('<p><b>There was an error.</b></p>'), container('<p>')(stringifyError(err))), bb => [bb('OK', 'primary')]);
+  });
+}
+
+exports.alertError = alertError; // This function converts mod numbers (ie. 11) into A-B-day strings (ie. 1B).
 // The function is not used often because we expect users of the app to be able to
 // work with the 1-20 mod notation.
 
@@ -1005,11 +1070,11 @@ function stringifyError(error) {
     return JSON.stringify(error, Object.getOwnPropertyNames(error));
   }
 
-  if (typeof error === 'object') {
+  try {
     return JSON.stringify(error);
+  } catch (unusedError) {
+    return String(error);
   }
-
-  return error;
 }
 
 exports.stringifyError = stringifyError;
@@ -1191,32 +1256,19 @@ class ResourceObservable extends ObservableState {
 
   updateRecord(record) {
     return __awaiter(this, void 0, void 0, function* () {
-      if (this.val.status !== server_1.AskStatus.LOADED) {
-        return this.val;
-      }
-
-      const ask = yield this.endpoint.update(record);
-
-      if (ask.status == server_1.AskStatus.LOADED) {
-        // update the client to match the server (sync)
-        this.val.val[String(record.id)] = record;
-        this.change.trigger();
-      }
-
-      return ask;
+      if (this.val.status === server_1.AskStatus.ERROR) return this.val;
+      this.val.val[String(record.id)] = record;
+      this.change.trigger();
+      return yield this.endpoint.update(record);
     });
   }
 
   createRecord(record) {
     return __awaiter(this, void 0, void 0, function* () {
+      if (this.val.status === server_1.AskStatus.ERROR) return this.val;
       const ask = yield this.endpoint.create(record);
 
-      if (this.val.status !== server_1.AskStatus.LOADED) {
-        return this.val;
-      }
-
-      if (ask.status == server_1.AskStatus.LOADED) {
-        // update the client to match the server (sync)
+      if (ask.status !== server_1.AskStatus.ERROR) {
         this.val.val[String(ask.val.id)] = ask.val;
         this.change.trigger();
       }
@@ -1227,15 +1279,10 @@ class ResourceObservable extends ObservableState {
 
   deleteRecord(id) {
     return __awaiter(this, void 0, void 0, function* () {
-      const ask = yield this.endpoint.delete(id);
-
-      if (ask.status == server_1.AskStatus.LOADED && this.val.status == server_1.AskStatus.LOADED) {
-        // update the client to match the server (sync)
-        delete this.val.val[String(id)];
-        this.change.trigger();
-      }
-
-      return ask;
+      if (this.val.status === server_1.AskStatus.ERROR) return this.val;
+      delete this.val.val[String(id)];
+      this.change.trigger();
+      return yield this.endpoint.delete(id);
     });
   }
 
@@ -1286,7 +1333,7 @@ class Resource {
       return builder.call(null, record);
     } catch (e) {
       console.error(e);
-      return '(??? UNKNOWN ???)';
+      return `(??? UNKNOWN #${String(id)} ???)`;
     }
   } // The edit window is kind of combined with the view window.
 
@@ -1313,7 +1360,7 @@ class Resource {
           const ask = yield this.state.updateRecord(form.getAllValues());
 
           if (ask.status === server_1.AskStatus.ERROR) {
-            alert(stringifyError(ask.message));
+            alertError(ask.message);
           }
         })], ['Close', () => closeWindow()]]).dom, windowLabel);
       } catch (err) {
@@ -1341,14 +1388,13 @@ class Resource {
         const {
           closeWindow
         } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), form.dom), ActionBar_1.ActionBarWidget([['Create', () => __awaiter(this, void 0, void 0, function* () {
-          const ask = yield this.state.createRecord(form.getAllValues());
-
-          if (ask.status === server_1.AskStatus.ERROR) {
-            alert('ERROR!\n' + stringifyError(ask.message));
+          try {
+            server_1.getResultOrFail((yield this.state.createRecord(form.getAllValues())));
+            closeWindow();
+          } catch (err) {
+            alertError(err);
           }
-
-          closeWindow();
-        })], ['Close', () => closeWindow()]]).dom, windowLabel);
+        })], ['Cancel', () => closeWindow()]]).dom, windowLabel);
       } catch (err) {
         const windowLabel = 'ERROR in: create new ' + this.info.title;
         errorMessage = stringifyError(err);
@@ -1367,7 +1413,7 @@ class Resource {
       try {
         const onLoad = new Event();
         recordCollection = yield this.state.getRecordCollectionOrFail();
-        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat('View'), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget('View', () => {
+        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat('View & edit'), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget('View & edit', () => {
           closeThisWindow();
           this.makeTiledEditWindow(record.id);
         }).dom));
@@ -1378,7 +1424,10 @@ class Resource {
         const windowLabel = 'View all ' + this.info.pluralTitle;
         const {
           closeWindow
-        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), table.dom), ActionBar_1.ActionBarWidget([['Create', () => this.makeTiledCreateWindow()], ['Close', () => closeWindow()]]).dom, windowLabel, onLoad);
+        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), table.dom), ActionBar_1.ActionBarWidget([['Create', () => {
+          closeWindow();
+          this.makeTiledCreateWindow();
+        }], ['Close', () => closeWindow()]]).dom, windowLabel, onLoad);
 
         function closeThisWindow() {
           closeWindow();
@@ -1388,7 +1437,7 @@ class Resource {
         const windowLabel = 'ERROR in: view all ' + this.info.pluralTitle;
         const {
           closeWindow
-        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Create', () => this.makeTiledCreateWindow()], ['Close', () => closeWindow()]]).dom, windowLabel);
+        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
       }
     });
   }
@@ -1398,7 +1447,7 @@ class Resource {
     const {
       windowWidget,
       closeWindow
-    } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')('Delete?'), container('<p></p>')('Are you sure you want to delete this?')), ActionBar_1.ActionBarWidget([['Delete', () => this.state.deleteRecord(id).then(() => closeParentWindow()).then(() => closeWindow()).then(() => alert('Deletion successful!'))], ['Cancel', () => closeWindow]]).dom, windowLabel);
+    } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')('Delete?'), container('<p></p>')('Are you sure you want to delete this?')), ActionBar_1.ActionBarWidget([['Delete', () => this.state.deleteRecord(id).then(() => closeParentWindow()).then(() => closeWindow()).catch(err => alertError(err))], ['Cancel', () => closeWindow]]).dom, windowLabel);
     return windowWidget;
   }
 
@@ -1498,25 +1547,21 @@ function showWindow(windowKey) {
 exports.showWindow = showWindow;
 
 function processResourceInfo(conf) {
+  conf.fields.push(['id', ui_1.NumberField('number')], ['date', ui_1.NumberField('datetime-local')]);
   let fields = [];
 
   for (const [name, type] of conf.fields) {
-    fields.push({
-      title: conf.fieldNameMap[name],
+    const x = conf.fieldNameMap[name];
+    fields.push(Object.assign({
+      title: typeof x === 'string' ? x : x[0]
+    }, Array.isArray(x) && {
+      info: x[1]
+    }, {
       name,
       type
-    });
+    }));
   }
 
-  fields = fields.concat([{
-    title: 'ID',
-    name: 'id',
-    type: ui_1.NumberField('number')
-  }, {
-    title: 'Date',
-    name: 'date',
-    type: ui_1.NumberField('datetime-local')
-  }]);
   return {
     fields,
     makeTableRowContent: conf.makeTableRowContent,
@@ -1539,24 +1584,28 @@ const fieldNameMap = {
   lastName: 'Last name',
   friendlyName: 'Friendly name',
   friendlyFullName: 'Friendly full name',
-  grade: 'Grade',
-  learner: 'Learner',
-  tutor: 'Tutor',
+  grade: ['Grade', 'A number from 9-12'],
+  learner: ['Learner', 'This is an ID. You usually will not need to edit this by hand.'],
+  tutor: ['Tutor', 'This is an ID. You usually will not need to edit this by hand.'],
+  attendance: ['Attendance data', 'Do not edit this by hand.'],
   status: 'Status',
-  mods: 'Mods',
-  mod: 'Mod',
-  modsPref: 'Preferred mods',
+  mods: ['Mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
+  dropInMods: ['Drop-in mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
+  mod: ['Mod', 'A number from 1-20, corresponding to 1A-10B'],
+  modsPref: ['Preferred mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
   subjectList: 'Subjects',
-  request: 'Request',
+  request: ['Request', 'This is an ID. You usually will not need to edit this by hand.'],
   subject: 'Subject(s)',
   studentId: 'Student ID',
   email: 'Email',
   phone: 'Phone',
   contactPref: 'Contact preference',
-  specialRoom: 'Special tutoring room'
+  specialRoom: ['Special tutoring room', `Leave blank if the student isn't in special tutoring`],
+  id: ['ID', `Do not modify unless you really know what you're doing!`],
+  date: ['Date', 'Date of creation -- do not change']
 };
 const tutorsInfo = {
-  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['modsPref', ui_1.NumberArrayField('number')], ['subjectList', ui_1.StringField('text')]],
+  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['modsPref', ui_1.NumberArrayField('number')], ['subjectList', ui_1.StringField('text')], ['attendance', ui_1.JsonField({})], ['dropInMods', ui_1.NumberArrayField('number')]],
   fieldNameMap,
   tableFieldTitles: ['Name', 'Grade', 'Mods', 'Subjects'],
   makeTableRowContent: record => [exports.tutors.createMarker(record.id, x => x.friendlyFullName), record.grade, generateStringOfMods(record.mods, record.modsPref), record.subjectList],
@@ -1565,7 +1614,7 @@ const tutorsInfo = {
   makeLabel: record => record.friendlyFullName
 };
 const learnersInfo = {
-  fields: [...makeBasicStudentConfig()],
+  fields: [...makeBasicStudentConfig(), ['attendance', ui_1.JsonField({})]],
   fieldNameMap,
   tableFieldTitles: ['Name', 'Grade'],
   makeTableRowContent: record => [exports.learners.createMarker(record.id, x => x.friendlyFullName), record.grade],
@@ -1601,7 +1650,7 @@ const matchingsInfo = {
   makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + ' <> ' + exports.learners.state.getRecordOrFail(record.learner).friendlyFullName
 };
 const requestSubmissionsInfo = {
-  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')], ['specialRoom', ui_1.StringField('text')], ['status', ui_1.StringField('text')]],
+  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')], ['specialRoom', ui_1.StringField('text')], ['status', ui_1.SelectField(['unchecked', 'checked'], ['Unchecked', 'Checked'])]],
   fieldNameMap,
   tableFieldTitles: ['Name', 'Mods', 'Subject'],
   makeTableRowContent: record => [record.friendlyFullName, record.mods.join(', '), record.subject],
@@ -1806,37 +1855,34 @@ function isOperationConfirmedByUser(args) {
 
 const pillsString = `
 <ul class="nav nav-pills">
-    <li class="nav-item">
-        <a class="nav-link">Tutors</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Learners</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Requests</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Request submissions</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Bookings</a>
-    </li>
-    <li class="nav-item">
-        <a class="nav-link">Matchings</a>
+    <li class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">View, edit, and add information</a>
+        <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item">Tutors</a>
+            <a class="dropdown-item">Learners</a>
+            <a class="dropdown-item">Requests</a>
+            <a class="dropdown-item">Request submissions</a>
+            <a class="dropdown-item">Bookings</a>
+            <a class="dropdown-item">Matchings</a>
+        </div>
     </li>
     <li class="nav-item dropdown">
-        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Steps</a>
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Scheduling workflow</a>
         <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">Check request submissions</a>
             <a class="dropdown-item">Handle requests and bookings</a>
             <a class="dropdown-item">Finalize matchings</a>
         </div>
     </li>
+    <li class="nav-item">
+        <a class="nav-link">Attendance</a>
+    </li>
     <li class="nav-item dropdown">
         <a class="nav-link dropdown-toggle" data-toggle="dropdown">Other</a>
         <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">About</a>
             <a class="dropdown-item">Force refresh</a>
+            <a class="dropdown-item">Testing mode</a>
         </div>
     </li>
 </ul>`;
@@ -1858,6 +1904,10 @@ function simpleStepWindow(defaultWindowLabel, makeContent) {
       } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
     }
   });
+}
+
+function showTestingModeWarning() {
+  ui_1.showModal('Testing mode loaded', 'The app has been disconnected from the actual database/forms and replaced with a blank test database with no data. Start by creating a tutor, learner, and request submission.', bb => [bb('OK', 'primary')]);
 }
 /*
 
@@ -1896,7 +1946,8 @@ function checkRequestSubmissionsStep() {
                 studentId: record.studentId,
                 email: record.email,
                 phone: record.phone,
-                contactPref: record.contactPref
+                contactPref: record.contactPref,
+                attendance: {}
               })));
             } else {
               // learner already exists
@@ -1929,7 +1980,7 @@ function checkRequestSubmissionsStep() {
               closeWindow()();
               yield attemptConversion();
             } catch (err) {
-              alert(shared_1.stringifyError(err));
+              shared_1.alertError(err);
             }
           }
         })).dom];
@@ -1992,14 +2043,14 @@ function handleRequestsAndBookingsStep() {
         const y = requestsIndex[String(x.request)];
         if (y.currentStatus == 'Matched') continue;
 
-        if (x.status == 'unsent') {
-          y.currentStatus = 'unsent';
-        }
-
-        if (y.currentStatus == 'Unsent') continue;
-
         if (x.status.startsWith('waiting')) {
           y.currentStatus = 'Waiting';
+        }
+
+        if (y.currentStatus == 'Waiting') continue;
+
+        if (x.status == 'unsent') {
+          y.currentStatus = 'Unsent';
         }
       }
 
@@ -2023,17 +2074,17 @@ function showRequestBookerStep(requestId) {
           const response = yield shared_1.bookings.state.updateRecord(booking);
 
           if (response.status === server_1.AskStatus.ERROR) {
-            alert('ERROR!\n' + response.message);
+            shared_1.alertError(response.message);
           }
         }));
         return [shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + ' <> ' + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName), formSelectWidget.dom, ui_1.ButtonWidget('Todo', () => showBookingMessagerStep(booking.id)).dom, ui_1.ButtonWidget('Finalize', () => {
-          finalizeBookingsStep(booking.id, closeWindow());
+          finalizeBookingsStep(booking.id, () => closeWindow()());
         }).dom];
       }); // LOGIC: We use a toggle structure where:
       // - There is a row of mod buttons
       // - There is add functionality, but not delete functionality (bookings can be individually deleted)
       // - Toggling the button toggles entries in a temporary array of all added bookings [[tutor, mod]] via. filters
-      // - Clicking "Save your bookings" will write to the database
+      // - Clicking "Save bookings and close" will write to the database
 
       let bookingsInfo = [];
       const potentialTable = Table_1.TableWidget(['Tutor', '# times booked', 'Book for mods...'], ({
@@ -2072,13 +2123,14 @@ function showRequestBookerStep(requestId) {
 
         return [shared_1.tutors.createMarker(tutorId, x => x.friendlyFullName), String(numBookings), buttonsDom];
       });
-      const saveBookingsButton = ui_1.ButtonWidget('Save your bookings', () => __awaiter(this, void 0, void 0, function* () {
+      const saveBookingsButton = ui_1.ButtonWidget('Save bookings and close', () => __awaiter(this, void 0, void 0, function* () {
+        closeWindow()();
+
         try {
           for (const {
             tutorId,
             mod
           } of bookingsInfo) {
-            closeWindow()();
             const ask = yield shared_1.bookings.state.createRecord({
               id: -1,
               date: -1,
@@ -2093,7 +2145,7 @@ function showRequestBookerStep(requestId) {
             }
           }
         } catch (err) {
-          alert(err);
+          shared_1.alertError(err);
         }
       }));
       table.setAllValues(Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id))); // LOGIC: calculating which tutors work for this request
@@ -2242,7 +2294,7 @@ function finalizeMatchingsStep() {
           const response = yield shared_1.matchings.state.updateRecord(record);
 
           if (response.status === server_1.AskStatus.ERROR) {
-            alert('ERROR!\n' + response.message);
+            shared_1.alertError(response.message);
           }
         }));
         return [shared_1.learners.createLabel(record.learner, x => x.friendlyFullName) + '<>' + shared_1.tutors.createLabel(record.tutor, x => x.friendlyFullName), formSelectWidget.dom, ui_1.ButtonWidget('Send', () => {
@@ -2283,6 +2335,78 @@ function finalizeMatching(matchingId, onVerify) {
     }
   });
 }
+
+function attendanceStep() {
+  return __awaiter(this, void 0, void 0, function* () {
+    yield simpleStepWindow('Attendance', _closeWindow => {
+      const t = Object.values(shared_1.tutors.state.getRecordCollectionOrFail());
+      const l = Object.values(shared_1.learners.state.getRecordCollectionOrFail());
+      const table = Table_1.TableWidget( // Both learners and tutors are students.
+      ['Student', 'Total minutes', 'Attendance level', 'Details'], ({
+        isLearner,
+        student
+      }) => {
+        // calculate the attendance level & totals
+        let numPresent = 0;
+        let numAbsent = 0;
+        let totalMinutes = 0;
+
+        for (const x of Object.values(student.attendance)) {
+          for (const {
+            minutes
+          } of x) {
+            if (minutes > 0) {
+              ++numPresent;
+            } else {
+              ++numAbsent;
+            }
+
+            totalMinutes += minutes;
+          }
+        }
+
+        return [(isLearner ? shared_1.learners : shared_1.tutors).createLabel(student.id, x => x.friendlyFullName), String(totalMinutes), `${numPresent}P / ${numAbsent}A`, ui_1.ButtonWidget('Details', () => {
+          attendanceDetailsStep({
+            isLearner,
+            student
+          });
+        }).dom];
+      });
+      table.setAllValues(t.map(x => ({
+        isLearner: false,
+        student: x
+      })).concat(l.map(x => ({
+        isLearner: true,
+        student: x
+      }))));
+      return table.dom;
+    });
+  });
+}
+
+function attendanceDetailsStep({
+  isLearner,
+  student
+}) {
+  return __awaiter(this, void 0, void 0, function* () {
+    yield simpleStepWindow(shared_1.container('<span>')('Attendance for ', (isLearner ? shared_1.learners : shared_1.tutors).createMarker(student.id, x => x.friendlyFullName)), _closeWindow => {
+      const table = Table_1.TableWidget( // Both learners and tutors are students.
+      ['Date', 'Mod', 'Present?'], attendanceEntry => {
+        return [new Date(attendanceEntry.date).toISOString().substring(0, 10), String(attendanceEntry.mod), attendanceEntry.minutes > 0 ? `P (${attendanceEntry.minutes} minutes)` : $('<span style="color:red">ABSENT</span>')];
+      });
+      const attendanceData = [];
+
+      for (const x of Object.values(student.attendance)) {
+        for (const y of x) {
+          attendanceData.push(y);
+        }
+      }
+
+      table.setAllValues(attendanceData);
+      return table.dom;
+    });
+  });
+}
 /*
 
 ROOT WIDGET
@@ -2317,6 +2441,22 @@ function rootWidget() {
         }
       }
 
+      if (text == 'Testing mode') {
+        window['APP_DEBUG_MOCK'] = 1;
+        shared_1.tutors.state.forceRefresh();
+        shared_1.learners.state.forceRefresh();
+        shared_1.bookings.state.forceRefresh();
+        shared_1.matchings.state.forceRefresh();
+        shared_1.requests.state.forceRefresh();
+        shared_1.requestSubmissions.state.forceRefresh();
+
+        for (const window of shared_1.state.tiledWindows.val) {
+          window.onLoad.trigger();
+        }
+
+        showTestingModeWarning();
+      }
+
       if (text == 'Check request submissions') {
         checkRequestSubmissionsStep();
       }
@@ -2328,6 +2468,10 @@ function rootWidget() {
       if (text == 'Finalize matchings') {
         finalizeMatchingsStep();
       }
+
+      if (text == 'Attendance') {
+        attendanceStep();
+      }
     });
     return {
       dom
@@ -2335,6 +2479,7 @@ function rootWidget() {
   }
 
   const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit">')($('<strong class="mr-4">ARC</strong>'), PillsWidget().dom), shared_1.container('<nav class="navbar layout-item-fit layout-v"></div>')(WindowsBar_1.WindowsBarWidget().dom), shared_1.container('<div class="layout-item-scroll"></div>')(TilingWindowManager_1.TilingWindowManagerWidget().dom));
+  if (window['APP_DEBUG_MOCK'] === 1) showTestingModeWarning();
   return {
     dom
   };
@@ -2394,5 +2539,5 @@ $(document).ready(window['appOnReady']);
 },{"./core/shared":"m0/6","./core/widget":"o4ND"}]},{},["7QCb"], null)
 
 
-/* Automatically built on 2019-07-17 18:17:40 */
+/* Automatically built on 2019-07-17 18:31:01 */
 
