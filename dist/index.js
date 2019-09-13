@@ -158,7 +158,7 @@ function failAfterFiveSeconds(p) {
   return new Promise((res, rej) => {
     setTimeout(() => rej(JSON.stringify({
       error: true,
-      message: 'Server is not responding',
+      message: "Server is not responding",
       val: null
     })), 5000);
     p.then(res);
@@ -167,14 +167,14 @@ function failAfterFiveSeconds(p) {
 
 function convertServerStringToAskFinished(str) {
   try {
-    if (typeof str !== 'string') {
-      throw new Error('server response not in correct type');
+    if (typeof str !== "string") {
+      throw new Error("server response not in correct type");
     } else {
       try {
         const response = JSON.parse(str);
 
-        if (typeof response !== 'object' || typeof response.error !== 'boolean') {
-          throw new Error('server response not in correct type');
+        if (typeof response !== "object" || typeof response.error !== "boolean") {
+          throw new Error("server response not in correct type");
         } else if (response.error) {
           const v = {
             status: AskStatus.ERROR,
@@ -189,13 +189,13 @@ function convertServerStringToAskFinished(str) {
           return v;
         }
       } catch (err) {
-        throw new Error('parsing issue >> ' + shared_1.stringifyError(err));
+        throw new Error("parsing issue >> " + shared_1.stringifyError(err));
       }
     }
   } catch (err) {
     const v = {
       status: AskStatus.ERROR,
-      message: 'during convert >> ' + shared_1.stringifyError(err)
+      message: "during convert >> " + shared_1.stringifyError(err)
     };
     return v;
   }
@@ -218,23 +218,29 @@ function askServer(args) {
     let result = JSON.stringify({
       error: true,
       val: null,
-      message: 'Mysterious error'
+      message: "Mysterious error"
     });
 
     try {
-      if (window['APP_DEBUG_MOCK'] !== 1) {
-        console.log('[server]    args', args);
-        result = yield failAfterFiveSeconds(realServer(args));
-        console.log('[server]  result', args, '=>', result);
+      if (window["APP_DEBUG_MOCK"] !== 1) {
+        console.log("[server]    args", args);
+
+        if (args[0] === "command") {
+          result = yield realServer(args);
+        } else {
+          result = yield failAfterFiveSeconds(realServer(args));
+        }
+
+        console.log("[server]  result", args, "=>", result);
       } else {
-        console.log('[MOCK server]   args', args);
+        console.log("[MOCK server]   args", args);
         result = yield failAfterFiveSeconds(mockServer(args));
-        console.log('[MOCK server] result', args, '=>', result);
+        console.log("[MOCK server] result", args, "=>", result);
       }
     } catch (err) {
       result = JSON.stringify({
         status: AskStatus.ERROR,
-        message: 'askserver error >> ' + shared_1.stringifyError(err)
+        message: "askserver error >> " + shared_1.stringifyError(err)
       });
     }
 
@@ -244,13 +250,13 @@ function askServer(args) {
 
 exports.askServer = askServer;
 /*
-KEY CONCEPT: how data is kept in sync
+KEY CONCEPT: how data is kept in sync (BUT THIS IS 100% TODO)
 Suppose multiple people are using the app at once. When someone sends a change to the server, onClientNotification methods for ALL OTHER clients are called, which basically tell the other clients to "make XYZ change to your local copy of the data".
 */
 
 function onClientNotification(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    console.log('[server notification]', args);
+    console.log("[server notification]", args);
     const getResource = {
       tutors: () => shared_1.tutors,
       learners: () => shared_1.learners,
@@ -260,28 +266,30 @@ function onClientNotification(args) {
       requestSubmissions: () => shared_1.requestSubmissions
     };
 
-    if (args[0] === 'update') {
+    if (args[0] === "update") {
       getResource[args[1]]().state.onServerNotificationUpdate(args[2]);
     }
 
-    if (args[0] === 'delete') {
+    if (args[0] === "delete") {
       getResource[args[1]]().state.onServerNotificationDelete(args[2]);
     }
 
-    if (args[0] === 'create') {
+    if (args[0] === "create") {
       getResource[args[1]]().state.onServerNotificationCreate(args[2]);
     }
   });
 }
 
-exports.onClientNotification = onClientNotification;
+exports.onClientNotification = onClientNotification; // An ASK is a request sent to the server. Either the ASK is loading, or it is loaded successfully, or there is an error.
+
 var AskStatus;
 
 (function (AskStatus) {
   AskStatus["LOADING"] = "LOADING";
   AskStatus["LOADED"] = "LOADED";
   AskStatus["ERROR"] = "ERROR";
-})(AskStatus = exports.AskStatus || (exports.AskStatus = {}));
+})(AskStatus = exports.AskStatus || (exports.AskStatus = {})); // The point of the mock server is for demos, where we don't want to link to the real spreadsheet with the real data.
+
 
 class MockResourceServerEndpoint {
   constructor(resource, contents) {
@@ -312,17 +320,17 @@ class MockResourceServerEndpoint {
   }
 
   processClientAsk(args) {
-    if (args[0] === 'retrieveAll') {
+    if (args[0] === "retrieveAll") {
       return this.success(this.contents);
     }
 
-    if (args[0] === 'update') {
+    if (args[0] === "update") {
       this.contents[String(args[1].id)] = args[1];
-      onClientNotification(['update', this.resource().name, args[1]]);
+      onClientNotification(["update", this.resource().name, args[1]]);
       return this.success(null);
     }
 
-    if (args[0] === 'create') {
+    if (args[0] === "create") {
       if (args[1].date === -1) {
         args[1].date = Date.now();
       }
@@ -333,17 +341,17 @@ class MockResourceServerEndpoint {
       }
 
       this.contents[String(args[1].id)] = args[1];
-      onClientNotification(['create', this.resource().name, args[1]]);
+      onClientNotification(["create", this.resource().name, args[1]]);
       return this.success(this.contents[String(args[1].id)]);
     }
 
-    if (args[0] === 'delete') {
+    if (args[0] === "delete") {
       delete this.contents[String(args[1])];
-      onClientNotification(['delete', this.resource().name, args[1]]);
+      onClientNotification(["delete", this.resource().name, args[1]]);
       return this.success(null);
     }
 
-    throw new Error('args not matched');
+    throw new Error("args not matched");
   }
 
   replyToClientAsk(args) {
@@ -355,34 +363,131 @@ class MockResourceServerEndpoint {
           } catch (v) {
             rej(v);
           }
-        }, 500); // fake a half-second delay
+        }, 100); // fake a small delay
       });
     });
   }
 
-}
+} // You can edit this to add fake demo data, if you want.
+
 
 exports.mockResourceServerEndpoints = {
-  tutors: new MockResourceServerEndpoint(() => shared_1.tutors, {}),
-  learners: new MockResourceServerEndpoint(() => shared_1.learners, {}),
+  tutors: new MockResourceServerEndpoint(() => shared_1.tutors, {
+    "1561605140223": {
+      id: 1561605140223,
+      date: 1561267154650,
+      friendlyFullName: "Jordan McCann",
+      friendlyName: "Jordan",
+      firstName: "Jordan",
+      lastName: "McCann",
+      grade: 10,
+      studentId: 99999,
+      email: "foobar@icloud.com",
+      phone: "5181234567",
+      contactPref: "phone",
+      homeroom: "H123",
+      homeroomTeacher: "HRTeacher",
+      mods: [1, 2, 3, 6, 11, 12, 16],
+      modsPref: [3],
+      subjectList: "English",
+      attendance: {},
+      dropInMods: [3]
+    }
+  }),
+  learners: new MockResourceServerEndpoint(() => shared_1.learners, {
+    "1567531044346": {
+      id: 1567531044346,
+      date: 1567531044346,
+      friendlyFullName: "Jeffrey Huang",
+      friendlyName: "Jeffrey",
+      firstName: "Jeffrey",
+      lastName: "Huang",
+      grade: 0,
+      studentId: 8355,
+      email: "asdfasdf@gmail.com",
+      phone: "555-555-5555",
+      homeroom: "H123",
+      homeroomTeacher: "HRTeacher",
+      contactPref: "either",
+      attendance: {}
+    }
+  }),
   bookings: new MockResourceServerEndpoint(() => shared_1.bookings, {}),
   matchings: new MockResourceServerEndpoint(() => shared_1.matchings, {}),
   requests: new MockResourceServerEndpoint(() => shared_1.requests, {}),
-  requestSubmissions: new MockResourceServerEndpoint(() => shared_1.requestSubmissions, {})
+  requestSubmissions: new MockResourceServerEndpoint(() => shared_1.requestSubmissions, {
+    "1567530880861": {
+      id: 1567530880861,
+      date: 1562007565571,
+      friendlyFullName: "Jeffrey Huang",
+      friendlyName: "Jeffrey",
+      firstName: "Jeffrey",
+      lastName: "Huang",
+      grade: 0,
+      studentId: 8355,
+      email: "asdfasdf@gmail.com",
+      phone: "555-555-5555",
+      contactPref: "either",
+      homeroom: "H123",
+      homeroomTeacher: "HRTeacher",
+      mods: [3],
+      subject: "English",
+      specialRoom: "",
+      status: "unchecked"
+    },
+    "1567530880981": {
+      id: 1567530880981,
+      date: 1562100813234,
+      friendlyFullName: "Mary Jane",
+      friendlyName: "Mary",
+      firstName: "Mary",
+      lastName: "Jane",
+      grade: 0,
+      studentId: 16234,
+      email: "s",
+      phone: "s",
+      contactPref: "email",
+      homeroom: "H123",
+      homeroomTeacher: "HRTeacher",
+      mods: [3],
+      subject: "Math",
+      specialRoom: "",
+      status: "unchecked"
+    },
+    "1567530882754": {
+      id: 1567530882754,
+      date: 1562028050971,
+      friendlyFullName: "John Doe",
+      friendlyName: "John",
+      firstName: "John",
+      lastName: "Doe",
+      grade: 0,
+      studentId: 12345,
+      email: "undefined",
+      phone: "undefined",
+      contactPref: "either",
+      homeroom: "H123",
+      homeroomTeacher: "HRTeacher",
+      mods: [3],
+      subject: "all subjects",
+      specialRoom: "B812",
+      status: "unchecked"
+    }
+  })
 };
 
 function realServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
     function getGoogleAppsScriptEndpoint() {
-      if (window['google'] === undefined || window['google'].script === undefined) {
+      if (window["google"] === undefined || window["google"].script === undefined) {
         // This will be displayed to the user
-        throw 'You should turn on testing mode. Click OTHER >> TESTING MODE.';
+        throw "You should turn on testing mode. Click OTHER >> TESTING MODE.";
       }
 
-      return window['google'].script.run;
+      return window["google"].script.run;
     }
 
-    let result = 'Mysterious error';
+    let result = "Mysterious error";
 
     try {
       result = yield new Promise((res, rej) => {
@@ -396,11 +501,11 @@ function realServer(args) {
       });
     }
 
-    if (typeof result !== 'string') {
+    if (typeof result !== "string") {
       result = JSON.stringify({
         error: true,
         val: null,
-        message: shared_1.stringifyError('not a string: ' + String(result))
+        message: shared_1.stringifyError("not a string: " + String(result))
       });
     }
 
@@ -410,10 +515,27 @@ function realServer(args) {
 
 function mockServer(args) {
   return __awaiter(this, void 0, void 0, function* () {
-    let result = 'Mysterious error'; // only for resources so far
+    let result = "Mysterious error"; // only for resources so far
 
     try {
       const mockArgs = JSON.parse(JSON.stringify(args));
+
+      if (args[0] === "command") {
+        if (args[1] === "syncDataFromForms") {
+          throw new Error("command syncDataFromForms is not supported on the testing server");
+        }
+
+        if (args[1] === "recalculateAttendance") {
+          throw new Error("command recalculateAttendance is not supported on the testing server");
+        }
+
+        if (args[1] === "generateSchedule") {
+          throw new Error("command generateSchedule is not supported on the testing server");
+        }
+
+        throw new Error("command [unknown] is not supported on the testing server");
+      }
+
       result = JSON.stringify((yield exports.mockResourceServerEndpoints[mockArgs[0]].replyToClientAsk(mockArgs.slice(1))));
     } catch (err) {
       result = JSON.stringify({
@@ -423,11 +545,11 @@ function mockServer(args) {
       });
     }
 
-    if (typeof result !== 'string') {
+    if (typeof result !== "string") {
       result = JSON.stringify({
         error: true,
         val: null,
-        message: shared_1.stringifyError('not a string: ' + String(result))
+        message: shared_1.stringifyError("not a string: " + String(result))
       });
     }
 
@@ -445,7 +567,7 @@ const shared_1 = require("../core/shared");
 
 function FormWidget(fields) {
   const widgets = {};
-  const dom = shared_1.container('<form></form>')(fields.map(({
+  const dom = shared_1.container("<form></form>")(fields.map(({
     title,
     type,
     name,
@@ -453,7 +575,7 @@ function FormWidget(fields) {
   }) => {
     const widget = type();
     widgets[name] = widget;
-    return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-2 col-form-label"></label>')(shared_1.container('<b></b>')(title), info && shared_1.container('<i class="ml-2"></i>')(info)), shared_1.container('<div class="col-10"></div>')(widget.dom));
+    return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-5 col-form-label"></label>')(shared_1.container("<b></b>")(title), info && shared_1.container('<i class="ml-2"></i>')(info)), shared_1.container('<div class="col-7"></div>')(widget.dom));
   }));
   return {
     dom,
@@ -473,7 +595,7 @@ function FormWidget(fields) {
     setAllValues(values) {
       for (const [name, value] of Object.entries(values)) {
         if (widgets[name] === undefined) {
-          throw new Error('name ' + String(name) + ' does not exist in form');
+          throw new Error("name " + String(name) + " does not exist in form");
         }
 
         widgets[name].setValue(value);
@@ -484,86 +606,20 @@ function FormWidget(fields) {
 }
 
 exports.FormWidget = FormWidget;
-},{"../core/shared":"m0/6"}],"8cu6":[function(require,module,exports) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-const shared_1 = require("../core/shared");
-
-class KeyMaker {
-  constructor() {
-    this.nextKey = 0;
-  }
-
-  makeKey() {
-    const result = this.nextKey;
-    this.nextKey += 1;
-    return result;
-  }
-
-}
-
-const windowKeyMaker = new KeyMaker(); // Assume that all windows are tiled. So all WindowWidgets will be made from makeTiledWindow().
-
-function WindowWidget(content, actionBarContent) {
-  return shared_1.DomWidget(shared_1.container('<div class="card m-3"></div>')(shared_1.container('<div class="card-header"></div>')(actionBarContent), shared_1.container('<div class="card-body"></div>')(content)));
-}
-
-function useTiledWindow(content, actionBarContent, title, onLoad = new shared_1.Event()) {
-  const key = windowKeyMaker.makeKey();
-  const windowWidget = WindowWidget(content, actionBarContent);
-  shared_1.addWindow(windowWidget, key, title, onLoad);
-  return {
-    windowWidget,
-    minimizeWindow: () => shared_1.hideWindow(key),
-    closeWindow: () => shared_1.removeWindow(key),
-    onLoad
-  };
-}
-
-exports.useTiledWindow = useTiledWindow;
 },{"../core/shared":"m0/6"}],"T2q6":[function(require,module,exports) {
 "use strict";
 
-var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
-  return new (P || (P = Promise))(function (resolve, reject) {
-    function fulfilled(value) {
-      try {
-        step(generator.next(value));
-      } catch (e) {
-        reject(e);
-      }
-    }
-
-    function rejected(value) {
-      try {
-        step(generator["throw"](value));
-      } catch (e) {
-        reject(e);
-      }
-    }
-
-    function step(result) {
-      result.done ? resolve(result.value) : new P(function (resolve) {
-        resolve(result.value);
-      }).then(fulfilled, rejected);
-    }
-
-    step((generator = generator.apply(thisArg, _arguments || [])).next());
-  });
-};
-
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-/*
-TODO: badge, dropdown, and search
-*/
 
 const shared_1 = require("../core/shared");
+/*
+
+THIS IS LITERALLY JUST A BIG UTILITIES FILE FOR WIDGETS.
+
+*/
+
 /*export function LoaderWidget() {
     const spinner = container('<div></div>')(
         $('<strong>Loading...</strong>'),
@@ -590,27 +646,48 @@ const shared_1 = require("../core/shared");
 }*/
 
 
+function ListGroupNavigationWidget(data, dataToContent, emptyUiMessage, onRenavigation) {
+  function renavigate(item, index) {
+    dom.children().removeClass("active");
+    dom.children().eq(index).addClass("active");
+    onRenavigation(item, index);
+  }
+
+  const dom = shared_1.container('<ul class="list-group">')(data.length === 0 ? shared_1.container('<li class="list-group-item">')("No items") : data.map((item, index) => shared_1.container('<li class="list-group-item">')(dataToContent(item)).click(() => renavigate(item, index))));
+  return shared_1.DomWidget(dom);
+}
+
+exports.ListGroupNavigationWidget = ListGroupNavigationWidget;
+
+function addPopoverToDom(dom, popoverDom) {
+  dom.popover({
+    content: shared_1.container("<span>")(...popoverDom.toArray())[0]
+  });
+}
+
+exports.addPopoverToDom = addPopoverToDom;
+
 function ErrorWidget(message) {
-  const dom = shared_1.container('<div class="alert alert-danger"></div>')(shared_1.container('<h1></h1>')('Error'), $('<p><strong>An error occurred. You can try closing the window and opening again.</strong></p>'), shared_1.container('<span></span>')(message));
+  const dom = shared_1.container('<div class="alert alert-danger"></div>')(shared_1.container("<h1></h1>")("Error"), $("<p><strong>An error occurred. You can try closing the window and opening again.</strong></p>"), shared_1.container("<span></span>")(message));
   return shared_1.DomWidget(dom);
 }
 
 exports.ErrorWidget = ErrorWidget;
 
-function ButtonWidget(content, onClick, variant = 'primary') {
+function ButtonWidget(content, onClick, variant = "primary") {
   // to create an outline button, add "outline" to the variant
-  if (variant === 'outline') variant = 'outline-primary';
+  if (variant === "outline") variant = "outline-primary";
 
-  if (typeof content === 'string') {
-    return shared_1.DomWidget($('<button></button>').text(content).addClass('btn btn-' + variant).click(onClick));
+  if (typeof content === "string") {
+    return shared_1.DomWidget($("<button></button>").text(content).addClass("btn btn-" + variant).click(onClick));
   } else {
-    return shared_1.DomWidget($('<button></button>').append(content).addClass('btn btn-' + variant).click(onClick));
+    return shared_1.DomWidget($("<button></button>").append(content).addClass("btn btn-" + variant).click(onClick));
   }
 }
 
 exports.ButtonWidget = ButtonWidget;
 const modalHtmlString = `<div class="modal" tabindex="-1" role="dialog">
-<div class="modal-dialog" role="document">
+<div class="modal-dialog modal-lg" role="document">
   <div class="modal-content">
     <div class="modal-header">
       <h5 class="modal-title"></h5>
@@ -626,17 +703,38 @@ const modalHtmlString = `<div class="modal" tabindex="-1" role="dialog">
 </div>
 </div>`;
 
-function showModal(title, content, buildButtons) {
-  return __awaiter(this, void 0, void 0, function* () {
-    const dom = $(modalHtmlString);
-    dom.find('.modal-title').text(title);
-    dom.find('.modal-body').append(typeof content === 'string' ? shared_1.container('<p></p>')(content) : content);
-    dom.find('.modal-footer').append(buildButtons.call(null, (text, style, onClick) => $('<button type="button" class="btn" data-dismiss="modal">').addClass('btn-' + style).click(onClick).text(text)));
-    dom.modal();
-    return new Promise(res => {
-      dom.on('hidden.bs.modal', () => res());
-    });
+function showModal(title, content, buildButtons, preventBackgroundClose) {
+  const dom = $(modalHtmlString);
+  dom.find(".modal-title").text(title);
+  dom.find(".modal-body").append(typeof content === "string" ? shared_1.container("<p></p>")(content) : content); // https://stackoverflow.com/questions/10466129/how-to-hide-bootstrap-modal-with-javascript
+
+  const closeModal = () => dom.modal("hide");
+
+  const buildButtonsParameterFunction = (text, style, onClick, preventAutoClose) => $('<button type="button" class="btn">').addClass("btn-" + style).click(() => {
+    if (onClick) {
+      onClick();
+    }
+
+    if (!preventAutoClose) {
+      closeModal();
+    }
+  }).text(text);
+
+  buildButtonsParameterFunction.close = closeModal;
+  dom.find(".modal-footer").append(buildButtons(buildButtonsParameterFunction));
+  const settings = {}; // https://stackoverflow.com/questions/22207377/disable-click-outside-of-bootstrap-modal-area-to-close-modal
+
+  if (preventBackgroundClose) {
+    settings.backdrop = "static";
+    settings.keyboard = false;
+  }
+
+  dom.modal(settings);
+  const modifiedPromise = new Promise(res => {
+    dom.on("hidden.bs.modal", () => res());
   });
+  modifiedPromise.closeModal = closeModal;
+  return modifiedPromise;
 }
 
 exports.showModal = showModal;
@@ -655,13 +753,37 @@ function FormStringInputWidget(type) {
     },
 
     onChange(doThis) {
-      dom.val(() => doThis.call(null, dom.val()));
+      dom.change(() => doThis.call(null, dom.val()));
     }
 
   };
 }
 
 exports.FormStringInputWidget = FormStringInputWidget;
+
+function FormTextareaWidget() {
+  const dom = $(`<textarea class="form-control">`);
+  return {
+    dom,
+
+    getValue() {
+      return String(dom.val());
+    },
+
+    setValue(newVal) {
+      return dom.val(newVal);
+    },
+
+    onChange(doThis) {
+      dom.change(() => {
+        doThis.call(null, dom.val());
+      });
+    }
+
+  };
+}
+
+exports.FormTextareaWidget = FormTextareaWidget;
 
 function FormJsonInputWidget(defaultValue) {
   const dom = $(`<input class="form-control" type="text">`);
@@ -678,7 +800,7 @@ function FormJsonInputWidget(defaultValue) {
     },
 
     onChange(doThis) {
-      dom.val(() => doThis.call(null, JSON.parse(dom.val())));
+      dom.change(() => doThis.call(null, JSON.parse(dom.val())));
     }
 
   };
@@ -689,21 +811,21 @@ exports.FormJsonInputWidget = FormJsonInputWidget;
 function FormNumberInputWidget(type) {
   let dom = null;
 
-  if (type === 'number') {
+  if (type === "number") {
     dom = $(`<input class="form-control" type="number">`);
   }
 
-  if (type === 'datetime-local') {
+  if (type === "datetime-local") {
     dom = $(`<input class="form-control" type="datetime-local">`);
   }
 
-  if (type === 'id') {
+  if (type === "id") {
     // TODO: create a resource selection dropdown, or at least a name search
     dom = $(`<input class="form-control" type="number">`);
   }
 
   function getVal() {
-    if (type == 'datetime-local') {
+    if (type == "datetime-local") {
       // a hack to get around Typescript types
       const htmlEl = dom.get(0);
       const date = htmlEl.valueAsNumber;
@@ -721,7 +843,7 @@ function FormNumberInputWidget(type) {
     },
 
     setValue(val) {
-      if (type == 'datetime-local') {
+      if (type == "datetime-local") {
         // a hack to get around Typescript types
         const htmlEl = dom.get(0);
         htmlEl.valueAsNumber = val;
@@ -732,7 +854,7 @@ function FormNumberInputWidget(type) {
     },
 
     onChange(doThis) {
-      dom.val(doThis.call(null, getVal()));
+      dom.change(doThis.call(null, getVal()));
     }
 
   };
@@ -743,15 +865,15 @@ exports.FormNumberInputWidget = FormNumberInputWidget;
 function FormNumberArrayInputWidget(type) {
   let dom = null;
 
-  if (type === 'number') {
+  if (type === "number") {
     // arrays are entered as comma-separated values
     dom = $(`<input class="form-control" type="text">`);
   } else {
-    throw new Error('unsupported type');
+    throw new Error("unsupported type");
   }
 
   function getVal() {
-    return String(dom.val()).split(',').map(x => x.trim()).filter(x => x !== '').map(x => Number(x));
+    return String(dom.val()).split(",").map(x => x.trim()).filter(x => x !== "").map(x => Number(x));
   }
 
   return {
@@ -762,11 +884,11 @@ function FormNumberArrayInputWidget(type) {
     },
 
     setValue(val) {
-      return dom.val(val.map(x => String(x)).join(', '));
+      return dom.val(val.map(x => String(x)).join(", "));
     },
 
     onChange(doThis) {
-      dom.val(doThis.call(null, getVal()));
+      dom.change(doThis.call(null, getVal()));
     }
 
   };
@@ -787,7 +909,7 @@ function NumberField(type) {
 exports.NumberField = NumberField;
 
 function IdField() {
-  return () => FormNumberInputWidget('number');
+  return () => FormNumberInputWidget("number");
 }
 
 exports.IdField = IdField;
@@ -817,7 +939,7 @@ function FormSubmitWidget(text) {
 exports.FormSubmitWidget = FormSubmitWidget;
 
 function FormSelectWidget(options, optionTitles) {
-  const dom = shared_1.container('<select class="form-control"></select>')(options.map((_o, i) => shared_1.container('<option></option>')(optionTitles[i]).val(options[i])));
+  const dom = shared_1.container('<select class="form-control"></select>')(options.map((_o, i) => shared_1.container("<option></option>")(optionTitles[i]).val(options[i])));
   const k = {
     dom,
 
@@ -839,28 +961,28 @@ function FormSelectWidget(options, optionTitles) {
 
 exports.FormSelectWidget = FormSelectWidget;
 
-function FormToggleWidget(titleWhenFalse, titleWhenTrue, styleWhenFalse = 'outline-secondary', styleWhenTrue = 'primary') {
+function FormToggleWidget(titleWhenFalse, titleWhenTrue, styleWhenFalse = "outline-secondary", styleWhenTrue = "primary") {
   function setVal(newVal) {
     if (val === newVal) return;
 
     if (newVal) {
       val = true;
       dom.text(titleWhenTrue);
-      dom.removeClass('btn-' + styleWhenFalse);
-      dom.addClass('btn-' + styleWhenTrue);
+      dom.removeClass("btn-" + styleWhenFalse);
+      dom.addClass("btn-" + styleWhenTrue);
       return dom;
     } else {
       val = false;
       dom.text(titleWhenFalse);
-      dom.removeClass('btn-' + styleWhenTrue);
-      dom.addClass('btn-' + styleWhenFalse);
+      dom.removeClass("btn-" + styleWhenTrue);
+      dom.addClass("btn-" + styleWhenFalse);
       return dom;
     }
   }
 
   const dom = $('<button class="btn"></button>').click(() => {
     if (val === null) {
-      throw new Error('improper init of toggle button');
+      throw new Error("improper init of toggle button");
     }
 
     setVal(!val);
@@ -870,7 +992,7 @@ function FormToggleWidget(titleWhenFalse, titleWhenTrue, styleWhenFalse = 'outli
     dom,
 
     getValue() {
-      if (val === null) throw new Error('attempt to read toggle button value before init');
+      if (val === null) throw new Error("attempt to read toggle button value before init");
       return val;
     },
 
@@ -890,7 +1012,7 @@ function FormToggleWidget(titleWhenFalse, titleWhenTrue, styleWhenFalse = 'outli
 exports.FormToggleWidget = FormToggleWidget;
 
 function SearchItemWidget(onSubmit) {
-  return shared_1.DomWidget($('<form class="form-inline"></form>').append(FormStringInputWidget('search').dom).append(FormSubmitWidget('Search').dom).submit(ev => {
+  return shared_1.DomWidget($('<form class="form-inline"></form>').append(FormStringInputWidget("search").dom).append(FormSubmitWidget("Search").dom).submit(ev => {
     ev.preventDefault();
     onSubmit.call(null);
   }));
@@ -907,44 +1029,18 @@ exports.createMarkerLink = createMarkerLink;
 function MessageTemplateWidget(content) {
   const textarea = $('<textarea class="form-control"></textarea>');
   textarea.val(content);
-  const button = ButtonWidget('Copy to clipboard', () => {
+  const button = ButtonWidget("Copy to clipboard", () => {
     const htmlEl = textarea[0];
     htmlEl.select();
-    document.execCommand('copy');
-    button.val('Copied!');
-    setTimeout(() => button.val('Copy to clipboard'), 1000);
+    document.execCommand("copy");
+    button.val("Copied!");
+    setTimeout(() => button.val("Copy to clipboard"), 1000);
   });
   return shared_1.DomWidget(shared_1.container('<div class="card"></div>')(shared_1.container('<div class="card-body"></div>')(textarea, button)));
 }
 
 exports.MessageTemplateWidget = MessageTemplateWidget;
-},{"../core/shared":"m0/6"}],"DVx/":[function(require,module,exports) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-const shared_1 = require("../core/shared");
-
-const ui_1 = require("./ui");
-
-function ActionBarWidget(config) {
-  function makeButton(name, handler) {
-    if (name == 'Edit') return ui_1.ButtonWidget('Edit', handler, 'outline');
-    if (name == 'Delete') return ui_1.ButtonWidget('Delete', handler, 'outline-danger');
-    if (name == 'Save') return ui_1.ButtonWidget('Save', handler, 'outline');
-    if (name == 'Cancel') return ui_1.ButtonWidget('Cancel', handler, 'outline-secondary');
-    if (name == 'Create') return ui_1.ButtonWidget('Create', handler, 'outline');
-    if (name == 'Close') return ui_1.ButtonWidget('Close', handler, 'outline');
-    throw new Error('button not supported');
-  }
-
-  return shared_1.DomWidget(shared_1.container('<div class="d-flex justify-content-end"></div>')(config.map(([name, handler]) => makeButton(name, handler).dom.addClass('ml-2'))));
-}
-
-exports.ActionBarWidget = ActionBarWidget;
-},{"../core/shared":"m0/6","./ui":"T2q6"}],"Jwlf":[function(require,module,exports) {
+},{"../core/shared":"m0/6"}],"Jwlf":[function(require,module,exports) {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -958,7 +1054,7 @@ function TableWidget(headerTitles, makeRowContent) {
   const dom = $('<table class="table"></table>');
 
   function setAllValues(collection) {
-    if (typeof collection === 'object') {
+    if (typeof collection === "object") {
       values = Object.values(collection);
     } else {
       values = collection;
@@ -970,9 +1066,9 @@ function TableWidget(headerTitles, makeRowContent) {
   function rebuildTable() {
     dom.empty(); // headers
 
-    dom.append(shared_1.container('<thead></thead>')(shared_1.container('<tr></tr>')(headerTitles.map(str => shared_1.container('<th scope="col"></th>')(str))))); // content
+    dom.append(shared_1.container("<thead></thead>")(shared_1.container("<tr></tr>")(headerTitles.map(str => shared_1.container('<th scope="col"></th>')(str))))); // content
 
-    dom.append(shared_1.container('<tbody></tbody>')(values.map(record => shared_1.container('<tr></tr>')(makeRowContent(record).map((rowContent, i) => shared_1.container('<td></td>')(typeof rowContent === 'string' ? document.createTextNode(rowContent) : rowContent))))));
+    dom.append(shared_1.container("<tbody></tbody>")(values.map(record => shared_1.container("<tr></tr>")(makeRowContent(record).map((rowContent, i) => shared_1.container("<td></td>")(typeof rowContent === "string" ? document.createTextNode(rowContent) : rowContent))))));
   }
 
   rebuildTable();
@@ -1022,11 +1118,7 @@ const server_1 = require("./server");
 
 const Form_1 = require("../widgets/Form");
 
-const Window_1 = require("../widgets/Window");
-
 const ui_1 = require("../widgets/ui");
-
-const ActionBar_1 = require("../widgets/ActionBar");
 
 const Table_1 = require("../widgets/Table");
 
@@ -1041,9 +1133,21 @@ ALL BASIC CLASSES AND BASIC UTILS
 
 */
 
+function arrayEqual(a, b) {
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; ++i) {
+    if (a[i] !== b[i]) return false;
+  }
+
+  return true;
+}
+
+exports.arrayEqual = arrayEqual;
+
 function alertError(err) {
   return __awaiter(this, void 0, void 0, function* () {
-    yield ui_1.showModal('Error!', container('<div>')($('<p><b>There was an error.</b></p>'), container('<p>')(stringifyError(err))), bb => [bb('OK', 'primary')]);
+    yield ui_1.showModal("Error!", container("<div>")($("<p><b>There was an error.</b></p>"), container("<p>")(stringifyError(err))), bb => [bb("OK", "primary")]);
   });
 }
 
@@ -1053,9 +1157,9 @@ exports.alertError = alertError; // This function converts mod numbers (ie. 11) 
 
 function stringifyMod(mod) {
   if (1 <= mod && mod <= 10) {
-    return String(mod) + 'A';
+    return String(mod) + "A";
   } else if (11 <= mod && mod <= 20) {
-    return String(mod - 10) + 'B';
+    return String(mod - 10) + "B";
   }
 
   throw new Error(`mod ${mod} isn't serializable`);
@@ -1105,10 +1209,10 @@ exports.Event = Event;
 function container(newTag) {
   return (...children) => {
     if (Array.isArray(children[0])) {
-      return $(newTag).append(children[0].map(x => typeof x === 'string' ? $(document.createTextNode(x)) : x));
+      return $(newTag).append(children[0].map(x => typeof x === "string" ? $(document.createTextNode(x)) : x));
     }
 
-    return $(newTag).append(children.map(x => typeof x === 'string' ? $(document.createTextNode(x)) : x));
+    return $(newTag).append(children.map(x => typeof x === "string" ? $(document.createTextNode(x)) : x));
   };
 }
 
@@ -1140,7 +1244,7 @@ class ObservableState {
 exports.ObservableState = ObservableState;
 
 function generateStringOfMods(mods, modsPref) {
-  return mods.map(mod => String(mod) + (modsPref.includes(mod) ? '*' : '')).join(', ');
+  return mods.map(mod => String(mod) + (modsPref.includes(mod) ? "*" : "")).join(", ");
 }
 
 exports.generateStringOfMods = generateStringOfMods;
@@ -1163,23 +1267,23 @@ class ResourceEndpoint {
 
 
   retrieveAll() {
-    return this.askEndpoint('retrieveAll');
+    return this.askEndpoint("retrieveAll");
   }
 
   create(record) {
-    return this.askEndpoint('create', record);
+    return this.askEndpoint("create", record);
   }
 
   delete(id) {
-    return this.askEndpoint('delete', id);
+    return this.askEndpoint("delete", id);
   }
 
   debug() {
-    return this.askEndpoint('debug');
+    return this.askEndpoint("debug");
   }
 
   update(record) {
-    return this.askEndpoint('update', record);
+    return this.askEndpoint("update", record);
   }
 
 }
@@ -1190,7 +1294,7 @@ class ResourceObservable extends ObservableState {
   constructor(endpoint) {
     super({
       status: server_1.AskStatus.ERROR,
-      message: 'resource was not initialized properly'
+      message: "resource was not initialized properly"
     });
     this.endpoint = endpoint;
   }
@@ -1208,7 +1312,7 @@ class ResourceObservable extends ObservableState {
     const val = this.getLoadedOrFail();
 
     if (val[String(id)] === undefined) {
-      throw new Error('record not available: ' + this.endpoint.name + '/#' + id);
+      throw new Error("record not available: " + this.endpoint.name + "/#" + id);
     }
 
     return val[String(id)];
@@ -1226,7 +1330,7 @@ class ResourceObservable extends ObservableState {
 
   getLoadedOrFail() {
     if (this.val.status != server_1.AskStatus.LOADED) {
-      throw new Error('resource is not loaded: ' + this.endpoint.name);
+      throw new Error("resource is not loaded: " + this.endpoint.name);
     }
 
     return this.val.val;
@@ -1323,7 +1427,12 @@ class Resource {
     return Form_1.FormWidget(this.info.fields);
   }
 
-  createMarker(id, builder, onClick = () => this.makeTiledEditWindow(id)) {
+  createFriendlyMarker(id, builder, onClick) {
+    // TODO
+    return this.createDataEditorMarker(id, builder, onClick);
+  }
+
+  createDataEditorMarker(id, builder, onClick = () => this.makeTiledEditWindow(id)) {
     return ui_1.createMarkerLink(this.createLabel(id, builder), onClick);
   }
 
@@ -1335,13 +1444,23 @@ class Resource {
       console.error(e);
       return `(??? UNKNOWN #${String(id)} ???)`;
     }
+  }
+
+  createDomLabel(id, builder) {
+    try {
+      const record = this.state.getRecordOrFail(id);
+      return builder.call(null, record);
+    } catch (e) {
+      console.error(e);
+      return $(`<span>(??? UNKNOWN #${String(id)} ???)</span>`);
+    }
   } // The edit window is kind of combined with the view window.
 
 
   makeTiledEditWindow(id) {
     return __awaiter(this, void 0, void 0, function* () {
       let record = null;
-      let errorMessage = '';
+      let errorMessage = "";
 
       try {
         function capitalizeWord(w) {
@@ -1350,57 +1469,47 @@ class Resource {
 
         yield this.state.getRecordCollectionOrFail();
         record = this.state.getRecordOrFail(id);
-        const windowLabel = capitalizeWord(this.info.title) + ': ' + this.createLabel(id, this.info.makeLabel);
+        const windowLabel = capitalizeWord(this.info.title) + ": " + this.createLabel(id, this.info.makeLabel);
         const form = this.makeFormWidget();
         form.setAllValues(record);
-        const {
-          closeWindow
-        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), form.dom), ActionBar_1.ActionBarWidget([['Delete', () => this.makeTiledDeleteWindow(id, () => closeWindow())], ['Save', () => __awaiter(this, void 0, void 0, function* () {
-          closeWindow();
+        ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), form.dom), bb => [bb("Delete", "danger", () => this.makeTiledDeleteWindow(id, () => bb.close()), false), bb("Save", "primary", () => __awaiter(this, void 0, void 0, function* () {
           const ask = yield this.state.updateRecord(form.getAllValues());
 
           if (ask.status === server_1.AskStatus.ERROR) {
             alertError(ask.message);
           }
-        })], ['Close', () => closeWindow()]]).dom, windowLabel);
+        })), bb("Close", "secondary")]);
       } catch (err) {
-        const windowLabel = 'ERROR in: ' + this.info.title + ' #' + id;
+        const windowLabel = "ERROR in: " + this.info.title + " #" + id;
         errorMessage = stringifyError(err);
-        const {
-          closeWindow
-        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
+        ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
       }
     });
   }
 
   makeTiledCreateWindow() {
     return __awaiter(this, void 0, void 0, function* () {
-      let errorMessage = '';
+      let errorMessage = "";
 
       try {
         yield this.state.getRecordCollectionOrFail();
-        const windowLabel = 'Create new ' + this.info.title;
+        const windowLabel = "Create new " + this.info.title;
         const form = this.makeFormWidget();
         form.setAllValues({
           id: -1,
           date: Date.now()
         });
-        const {
-          closeWindow
-        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), form.dom), ActionBar_1.ActionBarWidget([['Create', () => __awaiter(this, void 0, void 0, function* () {
+        ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), form.dom), bb => [bb("Create", "primary", () => __awaiter(this, void 0, void 0, function* () {
           try {
             server_1.getResultOrFail((yield this.state.createRecord(form.getAllValues())));
-            closeWindow();
           } catch (err) {
             alertError(err);
           }
-        })], ['Cancel', () => closeWindow()]]).dom, windowLabel);
+        })), bb("Cancel", "secondary")]);
       } catch (err) {
-        const windowLabel = 'ERROR in: create new ' + this.info.title;
+        const windowLabel = "ERROR in: create new " + this.info.title;
         errorMessage = stringifyError(err);
-        const {
-          closeWindow
-        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
+        ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
       }
     });
   }
@@ -1408,47 +1517,27 @@ class Resource {
   makeTiledViewAllWindow() {
     return __awaiter(this, void 0, void 0, function* () {
       let recordCollection = null;
-      let errorMessage = '';
+      let errorMessage = "";
 
       try {
-        const onLoad = new Event();
         recordCollection = yield this.state.getRecordCollectionOrFail();
-        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat('View & edit'), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget('View & edit', () => {
-          closeThisWindow();
+        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat("View & edit"), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget("View & edit", () => {
           this.makeTiledEditWindow(record.id);
         }).dom));
-        onLoad.listen(() => {
-          recordCollection = this.state.getLoadedOrFail();
-          table.setAllValues(recordCollection);
-        });
-        const windowLabel = 'View all ' + this.info.pluralTitle;
-        const {
-          closeWindow
-        } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')(windowLabel), table.dom), ActionBar_1.ActionBarWidget([['Create', () => {
-          closeWindow();
-          this.makeTiledCreateWindow();
-        }], ['Close', () => closeWindow()]]).dom, windowLabel, onLoad);
-
-        function closeThisWindow() {
-          closeWindow();
-        }
+        table.setAllValues(recordCollection);
+        const windowLabel = "View all " + this.info.pluralTitle;
+        ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), table.dom), bb => [bb("Create", "secondary", () => this.makeTiledCreateWindow(), true), bb("Close", "primary")]);
       } catch (err) {
         errorMessage = stringifyError(err);
-        const windowLabel = 'ERROR in: view all ' + this.info.pluralTitle;
-        const {
-          closeWindow
-        } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
+        const windowLabel = "ERROR in: view all " + this.info.pluralTitle;
+        ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
       }
     });
   }
 
   makeTiledDeleteWindow(id, closeParentWindow) {
-    const windowLabel = 'Delete this ' + this.info.title + '? (' + this.createLabel(id, record => record.friendlyFullName) + ')';
-    const {
-      windowWidget,
-      closeWindow
-    } = Window_1.useTiledWindow(container('<div></div>')(container('<h1></h1>')('Delete?'), container('<p></p>')('Are you sure you want to delete this?')), ActionBar_1.ActionBarWidget([['Delete', () => this.state.deleteRecord(id).then(() => closeParentWindow()).then(() => closeWindow()).catch(err => alertError(err))], ['Cancel', () => closeWindow]]).dom, windowLabel);
-    return windowWidget;
+    const windowLabel = "Delete this " + this.info.title + "? (" + this.createLabel(id, record => record.friendlyFullName) + ")";
+    ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")("Delete?"), container("<p></p>")("Are you sure you want to delete this?")), bb => [bb("Delete", "danger", () => this.state.deleteRecord(id).then(() => closeParentWindow()).catch(err => alertError(err))), bb("Cancel", "primary")]);
   }
 
 }
@@ -1538,22 +1627,22 @@ function showWindow(windowKey) {
   // TODO: removed the event for now, and might add back in later
 
   /*for (const window of state.tiledWindows.val) {
-      if (window.key === windowKey) {
-          window.onLoad.trigger();
-      }
-  }*/
+        if (window.key === windowKey) {
+            window.onLoad.trigger();
+        }
+    }*/
 }
 
 exports.showWindow = showWindow;
 
 function processResourceInfo(conf) {
-  conf.fields.push(['id', ui_1.NumberField('number')], ['date', ui_1.NumberField('datetime-local')]);
+  conf.fields.push(["id", ui_1.NumberField("number")], ["date", ui_1.NumberField("datetime-local")]);
   let fields = [];
 
   for (const [name, type] of conf.fields) {
     const x = conf.fieldNameMap[name];
     fields.push(Object.assign({
-      title: typeof x === 'string' ? x : x[0]
+      title: typeof x === "string" ? x : x[0]
     }, Array.isArray(x) && {
       info: x[1]
     }, {
@@ -1575,95 +1664,115 @@ function processResourceInfo(conf) {
 exports.processResourceInfo = processResourceInfo;
 
 function makeBasicStudentConfig() {
-  return [['firstName', ui_1.StringField('text')], ['lastName', ui_1.StringField('text')], ['friendlyName', ui_1.StringField('text')], ['friendlyFullName', ui_1.StringField('text')], ['grade', ui_1.NumberField('number')], ['studentId', ui_1.NumberField('number')], ['email', ui_1.StringField('email')], ['phone', ui_1.StringField('string')], ['contactPref', ui_1.SelectField(['email', 'phone', 'either'], ['Email', 'Phone', 'Either'])]];
+  return [["firstName", ui_1.StringField("text")], ["lastName", ui_1.StringField("text")], ["friendlyName", ui_1.StringField("text")], ["friendlyFullName", ui_1.StringField("text")], ["grade", ui_1.NumberField("number")], ["studentId", ui_1.NumberField("number")], ["email", ui_1.StringField("email")], ["phone", ui_1.StringField("string")], ["contactPref", ui_1.SelectField(["email", "phone", "either"], ["Email", "Phone", "Either"])], ["homeroom", ui_1.StringField("text")], ["homeroomTeacher", ui_1.StringField("text")], ["attendanceAnnotation", ui_1.StringField("text")]];
 }
 
-exports.makeBasicStudentConfig = makeBasicStudentConfig;
+exports.makeBasicStudentConfig = makeBasicStudentConfig; // This maps field names to the words that show up in the UI.
+
 const fieldNameMap = {
-  firstName: 'First name',
-  lastName: 'Last name',
-  friendlyName: 'Friendly name',
-  friendlyFullName: 'Friendly full name',
-  grade: ['Grade', 'A number from 9-12'],
-  learner: ['Learner', 'This is an ID. You usually will not need to edit this by hand.'],
-  tutor: ['Tutor', 'This is an ID. You usually will not need to edit this by hand.'],
-  attendance: ['Attendance data', 'Do not edit this by hand.'],
-  status: 'Status',
-  mods: ['Mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
-  dropInMods: ['Drop-in mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
-  mod: ['Mod', 'A number from 1-20, corresponding to 1A-10B'],
-  modsPref: ['Preferred mods', 'A comma-separated list of numbers from 1-20, corresponding to 1A-10B'],
-  subjectList: 'Subjects',
-  request: ['Request', 'This is an ID. You usually will not need to edit this by hand.'],
-  subject: 'Subject(s)',
-  studentId: 'Student ID',
-  email: 'Email',
-  phone: 'Phone',
-  contactPref: 'Contact preference',
-  specialRoom: ['Special tutoring room', `Leave blank if the student isn't in special tutoring`],
-  id: ['ID', `Do not modify unless you really know what you're doing!`],
-  date: ['Date', 'Date of creation -- do not change']
+  firstName: "First name",
+  lastName: "Last name",
+  friendlyName: "Friendly name",
+  friendlyFullName: "Friendly full name",
+  grade: ["Grade", "A number from 9-12"],
+  learner: ["Learner", "This is an ID. You usually will not need to edit this by hand."],
+  tutor: ["Tutor", "This is an ID. You usually will not need to edit this by hand."],
+  attendance: ["Attendance data", "Do not edit this by hand."],
+  status: "Status",
+  mods: ["Mods", "A comma-separated list of numbers from 1-20, corresponding to 1A-10B"],
+  dropInMods: ["Drop-in mods", "A comma-separated list of numbers from 1-20, corresponding to 1A-10B"],
+  mod: ["Mod", "A number from 1-20, corresponding to 1A-10B"],
+  modsPref: ["Preferred mods", "A comma-separated list of numbers from 1-20, corresponding to 1A-10B"],
+  subjectList: "Subjects",
+  request: ["Request", "This is an ID. You usually will not need to edit this by hand."],
+  subject: "Subject(s)",
+  studentId: "Student ID",
+  email: "Email",
+  phone: "Phone",
+  contactPref: "Contact preference",
+  specialRoom: ["Special tutoring room", `Leave blank if the student isn't in special tutoring`],
+  id: ["ID", `Do not modify unless you really know what you're doing!`],
+  date: ["Date", "Date of creation -- do not change"],
+  homeroom: "Homeroom",
+  homeroomTeacher: "Homeroom teacher",
+  step: ["Step", "A number 1-4."],
+  chosenBooking: ["Chosen booking", "The ID of the booking that was chosen"],
+  afterSchoolAvailability: "After-school availability",
+  attendanceAnnotation: "Attendance annotation",
+  additionalHours: ["Additional hours", "Additional time added to the hours count"]
 };
+/*
+
+DECLARE INFO FOR EACH RESOURCE
+
+*/
+
 const tutorsInfo = {
-  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['modsPref', ui_1.NumberArrayField('number')], ['subjectList', ui_1.StringField('text')], ['attendance', ui_1.JsonField({})], ['dropInMods', ui_1.NumberArrayField('number')]],
+  fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["modsPref", ui_1.NumberArrayField("number")], ["subjectList", ui_1.StringField("text")], ["attendance", ui_1.JsonField({})], ["dropInMods", ui_1.NumberArrayField("number")], ["afterSchoolAvailability", ui_1.StringField("text")], ["additionalHours", ui_1.StringField("text")]],
   fieldNameMap,
-  tableFieldTitles: ['Name', 'Grade', 'Mods', 'Subjects'],
-  makeTableRowContent: record => [exports.tutors.createMarker(record.id, x => x.friendlyFullName), record.grade, generateStringOfMods(record.mods, record.modsPref), record.subjectList],
-  title: 'tutor',
-  pluralTitle: 'tutors',
+  tableFieldTitles: ["Name", "Grade", "Mods", "Subjects"],
+  makeTableRowContent: record => [exports.tutors.createDataEditorMarker(record.id, x => x.friendlyFullName), record.grade, generateStringOfMods(record.mods, record.modsPref), record.subjectList],
+  title: "tutor",
+  pluralTitle: "tutors",
   makeLabel: record => record.friendlyFullName
 };
 const learnersInfo = {
-  fields: [...makeBasicStudentConfig(), ['attendance', ui_1.JsonField({})]],
+  fields: [...makeBasicStudentConfig(), ["attendance", ui_1.JsonField({})]],
   fieldNameMap,
-  tableFieldTitles: ['Name', 'Grade'],
-  makeTableRowContent: record => [exports.learners.createMarker(record.id, x => x.friendlyFullName), record.grade],
-  title: 'learner',
-  pluralTitle: 'learners',
+  tableFieldTitles: ["Name", "Grade"],
+  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.id, x => x.friendlyFullName), record.grade],
+  title: "learner",
+  pluralTitle: "learners",
   makeLabel: record => record.friendlyFullName
 };
 const requestsInfo = {
-  fields: [['learner', ui_1.NumberField('id')], ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')], ['specialRoom', ui_1.StringField('text')]],
+  fields: [["learner", ui_1.NumberField("id")], ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["specialRoom", ui_1.StringField("text")], ["step", ui_1.NumberField("number")], ["chosenBooking", ui_1.NumberField("id")]],
   fieldNameMap,
-  tableFieldTitles: ['Learner', 'Subject', 'Mods'],
-  makeTableRowContent: record => [exports.learners.createMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(', ')],
-  title: 'request',
-  pluralTitle: 'requests',
+  tableFieldTitles: ["Learner", "Subject", "Mods"],
+  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
+  title: "request",
+  pluralTitle: "requests",
   makeLabel: record => exports.learners.createLabel(record.learner, x => x.friendlyFullName)
 };
 const bookingsInfo = {
-  fields: [['request', ui_1.NumberField('id')], ['tutor', ui_1.NumberField('id')], ['mod', ui_1.NumberField('number')], ['status', ui_1.SelectField(['unsent', 'waitingForTutor', 'waitingForLearner', 'finalized', 'rejected', 'rejectedByTutor', 'rejectedByLearner'], ['Unsent', 'Waiting for tutor', 'Waiting for learner', 'Finalized', 'Rejected', 'Rejected by tutor', 'Rejected by learner'])]],
+  fields: [["request", ui_1.NumberField("id")], ["tutor", ui_1.NumberField("id")], ["mod", ui_1.NumberField("number")], ["status", ui_1.SelectField(["ignore", "unsent", "waitingForTutor", "rejected"], ["Ignore", "Unsent", "Waiting", "Rejected"])]],
   fieldNameMap,
-  tableFieldTitles: ['Learner', 'Tutor', 'Mod', 'Status'],
-  makeTableRowContent: record => [exports.learners.createMarker(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createMarker(record.tutor, x => x.friendlyFullName), record.mod, record.status],
-  title: 'booking',
-  pluralTitle: 'bookings',
-  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + ' <> ' + exports.learners.state.getRecordOrFail(exports.requests.state.getRecordOrFail(record.request).learner).friendlyFullName
+  tableFieldTitles: ["Learner", "Tutor", "Mod", "Status"],
+  makeTableRowContent: record => [exports.learners.createDataEditorMarker(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.status],
+  title: "booking",
+  pluralTitle: "bookings",
+  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + exports.learners.state.getRecordOrFail(exports.requests.state.getRecordOrFail(record.request).learner).friendlyFullName
 };
 const matchingsInfo = {
-  fields: [['learner', ui_1.StringField('text')], ['tutor', ui_1.StringField('text')], ['subject', ui_1.StringField('text')], ['mod', ui_1.NumberField('number')], ['status', ui_1.SelectField(['unwritten', 'unsent', 'finalized'], ['Unwritten', 'Unsent', 'Finalized'])], ['specialRoom', ui_1.StringField('text')]],
+  fields: [["learner", ui_1.StringField("text")], ["tutor", ui_1.StringField("text")], ["subject", ui_1.StringField("text")], ["mod", ui_1.NumberField("number")], ["specialRoom", ui_1.StringField("text")]],
   fieldNameMap,
-  tableFieldTitles: ['Learner', 'Tutor', 'Mod', 'Subject', 'Status'],
-  makeTableRowContent: record => [exports.learners.createMarker(record.learner, x => x.friendlyFullName), exports.tutors.createMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject, record.status],
-  title: 'matching',
-  pluralTitle: 'matchings',
-  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + ' <> ' + exports.learners.state.getRecordOrFail(record.learner).friendlyFullName
+  tableFieldTitles: ["Learner", "Tutor", "Mod", "Subject", "Status"],
+  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject, record.status],
+  title: "matching",
+  pluralTitle: "matchings",
+  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + exports.learners.state.getRecordOrFail(record.learner).friendlyFullName
 };
 const requestSubmissionsInfo = {
-  fields: [...makeBasicStudentConfig(), ['mods', ui_1.NumberArrayField('number')], ['subject', ui_1.StringField('text')], ['specialRoom', ui_1.StringField('text')], ['status', ui_1.SelectField(['unchecked', 'checked'], ['Unchecked', 'Checked'])]],
+  fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["specialRoom", ui_1.StringField("text")], ["status", ui_1.SelectField(["unchecked", "checked"], ["Unchecked", "Checked"])]],
   fieldNameMap,
-  tableFieldTitles: ['Name', 'Mods', 'Subject'],
-  makeTableRowContent: record => [record.friendlyFullName, record.mods.join(', '), record.subject],
-  title: 'request submission',
-  pluralTitle: 'request submissions',
+  tableFieldTitles: ["Name", "Mods", "Subject"],
+  makeTableRowContent: record => [record.friendlyFullName, record.mods.join(", "), record.subject],
+  title: "request submission",
+  pluralTitle: "request submissions",
   makeLabel: record => record.friendlyFullName
 };
-exports.tutors = new Resource('tutors', processResourceInfo(tutorsInfo));
-exports.learners = new Resource('learners', processResourceInfo(learnersInfo));
-exports.requests = new Resource('requests', processResourceInfo(requestsInfo));
-exports.bookings = new Resource('bookings', processResourceInfo(bookingsInfo));
-exports.matchings = new Resource('matchings', processResourceInfo(matchingsInfo));
-exports.requestSubmissions = new Resource('requestSubmissions', processResourceInfo(requestSubmissionsInfo));
+/*
+
+LET'S PULL IT ALL TOGETHER
+
+*/
+
+exports.tutors = new Resource("tutors", processResourceInfo(tutorsInfo));
+exports.learners = new Resource("learners", processResourceInfo(learnersInfo));
+exports.requests = new Resource("requests", processResourceInfo(requestsInfo));
+exports.bookings = new Resource("bookings", processResourceInfo(bookingsInfo));
+exports.matchings = new Resource("matchings", processResourceInfo(matchingsInfo));
+exports.requestSubmissions = new Resource("requestSubmissions", processResourceInfo(requestSubmissionsInfo));
 
 function initializeResources() {
   return __awaiter(this, void 0, void 0, function* () {
@@ -1677,8 +1786,13 @@ function initializeResources() {
 }
 
 exports.initializeResources = initializeResources;
+/*
 
-window['appDebug'] = () => ({
+VERY USEFUL FOR DEBUG
+
+*/
+
+window["appDebug"] = () => ({
   tutors: exports.tutors,
   learners: exports.learners,
   bookings: exports.bookings,
@@ -1686,107 +1800,7 @@ window['appDebug'] = () => ({
   requests: exports.requests,
   requestSubmissions: exports.requestSubmissions
 });
-},{"./server":"ZgGC","../widgets/Form":"IhYu","../widgets/Window":"8cu6","../widgets/ui":"T2q6","../widgets/ActionBar":"DVx/","../widgets/Table":"Jwlf"}],"5dK+":[function(require,module,exports) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-const shared_1 = require("../core/shared");
-
-function TilingWindowManagerWidget() {
-  const tiledWindows = shared_1.state.tiledWindows;
-  const dom = $('<div></div>');
-  const domWindowKeys = [];
-  tiledWindows.change.listen(() => {
-    // STEP A: REMOVE/ADD WINDOWS
-    const state = tiledWindows.val; // The windows we want to keep are the ones in the state.
-
-    const windowsToKeep = {};
-
-    for (const {
-      key
-    } of state) windowsToKeep[key] = true;
-
-    let childIndex = 0;
-
-    while (childIndex < dom.children().length) {
-      if (!windowsToKeep[domWindowKeys[childIndex]]) {
-        // remove this child: we do NOT increment childIndex
-        // because the next child will take the place of the
-        // current one
-        dom.children()[childIndex].remove(); // this resyncs domWindowKeys with the DOM
-
-        domWindowKeys.splice(childIndex, 1);
-      } else {
-        // take a look at the next child
-        ++childIndex;
-      }
-    } // we assume there might be ONE new window at the end of tiledWindows
-
-
-    if (state.length > 0) {
-      const windowsInDom = {};
-
-      for (const key of domWindowKeys) windowsInDom[key] = true;
-
-      if (!windowsInDom[state[state.length - 1].key]) {
-        // add it in to the end!
-        dom.append(state[state.length - 1].window.dom); // this resyncs domWindowKeys with the DOM
-
-        domWindowKeys.push(state[state.length - 1].key);
-      }
-    } // STEP B: SET VISIBILITIES
-    // By now, we assume that domWindowKeys and tiledWindows are in sync
-
-
-    for (let i = 0; i < state.length; ++i) {
-      if (state[i].visible) {
-        $(dom.children()[i]).show();
-      } else {
-        $(dom.children()[i]).hide();
-      }
-    }
-  });
-  return shared_1.DomWidget(dom);
-}
-
-exports.TilingWindowManagerWidget = TilingWindowManagerWidget;
-},{"../core/shared":"m0/6"}],"fk88":[function(require,module,exports) {
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-const shared_1 = require("../core/shared");
-
-const ui_1 = require("./ui");
-
-function WindowsBarWidget() {
-  const s = shared_1.state.tiledWindows;
-  const dom = $('<div></div>');
-
-  function makeButton({
-    key,
-    title,
-    visible
-  }) {
-    const closeButton = ui_1.ButtonWidget('(X)', () => shared_1.removeWindow(key), visible ? 'outline-primary' : 'outline-secondary').dom;
-    const mainButton = ui_1.ButtonWidget(shared_1.container('<span style="white-space: nowrap;overflow: hidden;text-overflow: ellipsis;"></span>')('Window: ' + title, closeButton), () => visible ? shared_1.hideWindow(key) : shared_1.showWindow(key), visible ? 'primary' : 'outline-secondary').dom;
-    return shared_1.container('<div class="btn-group d-inline-block mr-3"></div>')(mainButton, closeButton);
-  }
-
-  s.change.listen(() => {
-    dom.empty();
-    dom.append(s.val.map(makeButton));
-  });
-  return shared_1.DomWidget(dom);
-}
-
-exports.WindowsBarWidget = WindowsBarWidget;
-},{"../core/shared":"m0/6","./ui":"T2q6"}],"o4ND":[function(require,module,exports) {
+},{"./server":"ZgGC","../widgets/Form":"IhYu","../widgets/ui":"T2q6","../widgets/Table":"Jwlf"}],"o4ND":[function(require,module,exports) {
 "use strict";
 
 var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
@@ -1825,15 +1839,7 @@ const shared_1 = require("./shared");
 
 const ui_1 = require("../widgets/ui");
 
-const TilingWindowManager_1 = require("../widgets/TilingWindowManager");
-
-const WindowsBar_1 = require("../widgets/WindowsBar");
-
-const Window_1 = require("../widgets/Window");
-
 const Table_1 = require("../widgets/Table");
-
-const ActionBar_1 = require("../widgets/ActionBar");
 
 const server_1 = require("./server");
 /*
@@ -1846,17 +1852,24 @@ BASIC UTILITIES
 function isOperationConfirmedByUser(args) {
   return __awaiter(this, void 0, void 0, function* () {
     return new Promise(res => __awaiter(this, void 0, void 0, function* () {
-      const body = shared_1.container('<div></div>')($('<p><strong>This operation will do the following:</strong></p>'), shared_1.container('<ul></ul>')(args.thisOpDoes.map(x => shared_1.container('<li></li>')(x))), $('<p><strong>Make sure that:</strong></p>'), shared_1.container('<ul></ul>')(args.makeSureThat.map(x => shared_1.container('<li></li>')(x))));
-      yield ui_1.showModal('Are you sure?', body, bb => [bb('Cancel', 'outline-secondary'), bb('Go ahead', 'primary', () => res(true))]);
+      yield ui_1.showModal("Are you sure?", "", bb => [bb("No", "outline-secondary"), bb("Yes", "primary", () => res(true))]);
       res(false);
     }));
   });
 }
 
-const pillsString = `
+const navigationBarString = `
 <ul class="nav nav-pills">
     <li class="nav-item dropdown">
-        <a class="nav-link dropdown-toggle" data-toggle="dropdown">View, edit, and add information</a>
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Commands</a>
+        <div class="dropdown-menu dropdown-menu-right">
+            <a class="dropdown-item">Sync data from forms</a>
+            <a class="dropdown-item">Generate schedule</a>
+            <a class="dropdown-item">Recalculate attendance</a>
+        </div>
+    </li>
+    <li class="nav-item dropdown">
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Advanced data editor</a>
         <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">Tutors</a>
             <a class="dropdown-item">Learners</a>
@@ -1867,15 +1880,18 @@ const pillsString = `
         </div>
     </li>
     <li class="nav-item dropdown">
-        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Scheduling workflow</a>
+        <a class="nav-link dropdown-toggle" data-toggle="dropdown">Scheduling steps</a>
         <div class="dropdown-menu dropdown-menu-right">
-            <a class="dropdown-item">Check request submissions</a>
-            <a class="dropdown-item">Handle requests and bookings</a>
-            <a class="dropdown-item">Finalize matchings</a>
+            <a class="dropdown-item">Handle requests</a>
+            <a class="dropdown-item">Edit schedule</a>
+            <a class="dropdown-item">View schedule</a>
         </div>
     </li>
     <li class="nav-item">
         <a class="nav-link">Attendance</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link">After-school availability</a>
     </li>
     <li class="nav-item dropdown">
         <a class="nav-link dropdown-toggle" data-toggle="dropdown">Other</a>
@@ -1887,393 +1903,147 @@ const pillsString = `
     </li>
 </ul>`;
 
-function simpleStepWindow(defaultWindowLabel, makeContent) {
-  return __awaiter(this, void 0, void 0, function* () {
-    if (typeof defaultWindowLabel === 'string') defaultWindowLabel = shared_1.container('<span></span>')(defaultWindowLabel);
-    let errorMessage = '';
-
-    try {
-      const {
-        closeWindow
-      } = Window_1.useTiledWindow(shared_1.container('<div></div>')(shared_1.container('<h1></h1>')(defaultWindowLabel), makeContent(() => closeWindow)), ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, defaultWindowLabel.text());
-    } catch (err) {
-      const windowLabel = 'ERROR in: ' + defaultWindowLabel.text();
-      errorMessage = shared_1.stringifyError(err);
-      const {
-        closeWindow
-      } = Window_1.useTiledWindow(ui_1.ErrorWidget(errorMessage).dom, ActionBar_1.ActionBarWidget([['Close', () => closeWindow()]]).dom, windowLabel);
-    }
-  });
-}
-
 function showTestingModeWarning() {
-  ui_1.showModal('Testing mode loaded', 'The app has been disconnected from the actual database/forms and replaced with a blank test database with no data. Start by creating a tutor, learner, and request submission.', bb => [bb('OK', 'primary')]);
+  ui_1.showModal("Testing mode loaded", "The app has been disconnected from the actual database/forms and replaced with a database with test data.", bb => [bb("OK", "primary")]);
 }
 /*
 
-STEPS
+LOTS OF FUNCTIONS!!!!!
+
+IF YOU WANT ANY HOPE OF UNDERSTANDING THIS CODE, READ THE BOTTOM FIRST.
 
 */
 
 
-function checkRequestSubmissionsStep() {
+function showStep3Messager(bookingId) {
+  const b = shared_1.bookings.state.getRecordOrFail(bookingId);
+  const r = shared_1.requests.state.getRecordOrFail(b.request);
+  const t = shared_1.tutors.state.getRecordOrFail(b.tutor);
+  const l = shared_1.learners.state.getRecordOrFail(r.learner);
+  const dom = $("<div></div>");
+  dom.append($("<p>Contact the tutor:</p>"));
+  dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutoring ${l.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
+  dom.append($("<p>Contact the learner:</p>"));
+  dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutored by ${t.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
+  ui_1.showModal("Messager", shared_1.container("<div>")(shared_1.container("<h1>")("Messager for ", shared_1.learners.createDataEditorMarker(r.learner, x => x.friendlyFullName), " <> ", shared_1.tutors.createDataEditorMarker(b.tutor, x => x.friendlyFullName)), dom), bb => [bb("OK", "primary")]);
+}
+
+function showStep1Messager(bookingId) {
+  const b = shared_1.bookings.state.getRecordOrFail(bookingId);
+  const r = shared_1.requests.state.getRecordOrFail(b.request);
+  const t = shared_1.tutors.state.getRecordOrFail(b.tutor);
+  const l = shared_1.learners.state.getRecordOrFail(r.learner);
+  const dom = $("<div></div>");
+
+  if (b.status === "unsent") {
+    dom.append($("<p>Contact the tutor:</p>"));
+    dom.append(ui_1.MessageTemplateWidget(`Hi! Can you tutor a student in ${r.subject} on mod ${shared_1.stringifyMod(b.mod)}?`).dom);
+  }
+
+  if (b.status === "waitingForTutor") {
+    dom.append($("<p>You are waiting for the tutor.</p>"));
+  }
+
+  ui_1.showModal("Messager", shared_1.container("<div>")(shared_1.container("<h1>")("Messager for ", shared_1.learners.createDataEditorMarker(r.learner, x => x.friendlyFullName), " <> ", shared_1.tutors.createDataEditorMarker(b.tutor, x => x.friendlyFullName)), dom), bb => [bb("OK", "primary")]);
+}
+
+function showAfterSchoolAvailablityModal() {
+  try {
+    const tutorRecords = shared_1.tutors.state.getRecordCollectionOrFail();
+    const filtered = [];
+    const table = Table_1.TableWidget(["Name", "Availability"], id => [shared_1.tutors.createDataEditorMarker(id, x => x.friendlyFullName), shared_1.tutors.createLabel(id, x => x.afterSchoolAvailability)]);
+
+    for (const tutor of Object.values(tutorRecords)) {
+      if (tutor.afterSchoolAvailability !== "") {
+        filtered.push(tutor.id);
+      }
+    }
+
+    table.setAllValues(filtered);
+    ui_1.showModal("After-school availability", table.dom, bb => [bb("Close", "primary")]);
+  } catch (e) {
+    shared_1.alertError(e);
+  }
+}
+
+function requestChangeToStep4(requestId, onFinish) {
   return __awaiter(this, void 0, void 0, function* () {
-    yield simpleStepWindow('New request submissions', closeWindow => {
-      const recordCollection = shared_1.requestSubmissions.state.getRecordCollectionOrFail();
-      const table = Table_1.TableWidget(['Name', 'Convert into request'], record => {
-        function attemptConversion() {
-          return __awaiter(this, void 0, void 0, function* () {
-            // CREATE LEARNER
-            // try to dig up a learner with matching student ID, which would mean
-            // that the learner already exists in the database
-            const matches = Object.values(shared_1.learners.state.getRecordCollectionOrFail()).filter(x => x.studentId === record.studentId);
-            let learnerRecord;
+    const {
+      closeModal
+    } = ui_1.showModal("Saving...", "", bb => [], true);
 
-            if (matches.length > 1) {
-              // duplicate learner student IDs??
-              // this should be validated in the database
-              throw new Error(`duplicate student id: "${record.studentId}"`);
-            } else if (matches.length == 0) {
-              // create new learner
-              learnerRecord = server_1.getResultOrFail((yield shared_1.learners.state.createRecord({
-                firstName: record.firstName,
-                lastName: record.lastName,
-                friendlyName: record.friendlyName,
-                friendlyFullName: record.friendlyFullName,
-                grade: record.grade,
-                id: -1,
-                date: -1,
-                studentId: record.studentId,
-                email: record.email,
-                phone: record.phone,
-                contactPref: record.contactPref,
-                attendance: {}
-              })));
-            } else {
-              // learner already exists
-              learnerRecord = matches[0];
-            } // CREATE REQUEST
+    try {
+      const r = shared_1.requests.state.getRecordOrFail(requestId);
+      const b = shared_1.bookings.state.getRecordOrFail(r.chosenBooking); // ADD MATCHING
 
+      yield shared_1.matchings.state.createRecord({
+        learner: r.learner,
+        tutor: b.tutor,
+        subject: r.subject,
+        mod: b.mod,
+        specialRoom: r.specialRoom,
+        id: -1,
+        date: -1
+      }); // DELETE ALL BOOKINGS ASSOCIATED WITH REQUEST
 
-            server_1.getResultOrFail((yield shared_1.requests.state.createRecord({
-              learner: learnerRecord.id,
-              id: -1,
-              date: -1,
-              mods: record.mods,
-              subject: record.subject,
-              specialRoom: record.specialRoom
-            }))); // MARK REQUEST SUBMISSION AS CHECKED
-            // NOTE: this is only done if the above steps worked
-            // so if there's an error, the request submission won't be obliterated
-
-            record.status = 'checked';
-            server_1.getResultOrFail((yield shared_1.requestSubmissions.state.updateRecord(record)));
-          });
+      for (const booking of Object.values(shared_1.bookings.state.getRecordCollectionOrFail())) {
+        if (booking.request === r.id) {
+          yield shared_1.bookings.state.deleteRecord(booking.id);
         }
+      } // DELETE THE REFERENCE TO THE BOOKING & ADVANCE THE STEP
 
-        return [shared_1.requestSubmissions.createMarker(record.id, x => x.friendlyFullName), ui_1.ButtonWidget('Convert', () => __awaiter(this, void 0, void 0, function* () {
-          if (yield isOperationConfirmedByUser({
-            thisOpDoes: [`Creates a learner if he/she doesn't already exist in the app`, `Converts the "request submission" into a "request" and deletes the original`],
-            makeSureThat: [`Request submission information is accurate and correctly spelled`]
-          })) {
-            try {
-              closeWindow()();
-              yield attemptConversion();
-            } catch (err) {
-              shared_1.alertError(err);
-            }
-          }
-        })).dom];
-      });
-      table.setAllValues(Object.values(recordCollection).filter(x => x.status === 'unchecked'));
-      return table.dom;
-    });
+
+      r.step = 4;
+      r.chosenBooking = -1;
+      yield shared_1.requests.state.updateRecord(r);
+    } catch (err) {
+      shared_1.alertError(err);
+    } finally {
+      closeModal();
+      onFinish();
+    }
   });
 }
 
-function handleRequestsAndBookingsStep() {
+function requestChangeToStep3(requestId, onFinish) {
   return __awaiter(this, void 0, void 0, function* () {
-    yield simpleStepWindow('Requests & bookings', closeWindow => {
-      const learnerRecords = shared_1.learners.state.getRecordCollectionOrFail();
-      const bookingRecords = shared_1.bookings.state.getRecordCollectionOrFail();
-      const matchingRecords = shared_1.matchings.state.getRecordCollectionOrFail();
-      const requestRecords = shared_1.requests.state.getRecordCollectionOrFail();
-      const table = Table_1.TableWidget(['Request', 'Current status', 'Open booker'], i => {
-        return [shared_1.requests.createMarker(i.id, x => shared_1.learners.createLabel(x.learner, y => y.friendlyFullName)), i.currentStatus, ui_1.ButtonWidget('Open', () => {
-          closeWindow()();
-          showRequestBookerStep(i.id);
-        }).dom];
-      }); // INDEX: learners --> { requests, isMatched }
+    const {
+      closeModal
+    } = ui_1.showModal("Saving...", "", bb => [], true);
 
-      const learnersIndex = {};
-
-      for (const x of Object.values(learnerRecords)) {
-        learnersIndex[x.id] = {
-          isMatched: false
-        };
-      }
-
-      for (const x of Object.values(matchingRecords)) {
-        learnersIndex[String(x.learner)].isMatched = true;
-      } // INDEX: requests --> { bookings, matchings, shouldBeOnPage }
-
-
-      const requestsIndex = {};
-
-      for (const x of Object.values(requestRecords)) {
-        requestsIndex[String(x.id)] = {
-          id: x.id,
-          bookings: [],
-          matchings: [],
-          // "Current status" isn't actually a status directly from the database: it's just holds the string that is put on the UI
-          currentStatus: 'Unbooked'
-        };
-      } // ALL INDEXES ARE FULLY BUILT BY THIS POINT
-      // Don't show requests with an already-matched learner.
-
-
-      for (const x of Object.values(requestRecords)) {
-        if (learnersIndex[String(x.learner)].isMatched) {
-          requestsIndex[String(x.id)].currentStatus = 'Matched';
-        }
-      } // If a request has more than one booking, mark it as either status "Waiting" or "Unsent"
-
-
-      for (const x of Object.values(bookingRecords)) {
-        const y = requestsIndex[String(x.request)];
-        if (y.currentStatus == 'Matched') continue;
-
-        if (x.status.startsWith('waiting')) {
-          y.currentStatus = 'Waiting';
-        }
-
-        if (y.currentStatus == 'Waiting') continue;
-
-        if (x.status == 'unsent') {
-          y.currentStatus = 'Unsent';
-        }
-      }
-
-      table.setAllValues(Object.values(requestsIndex).filter(x => x.currentStatus !== 'Matched'));
-      return table.dom;
-    });
+    try {
+      const r = shared_1.requests.state.getRecordOrFail(requestId);
+      r.step = 3;
+      yield shared_1.requests.state.updateRecord(r);
+    } catch (err) {
+      shared_1.alertError(err);
+    } finally {
+      closeModal();
+      onFinish();
+    }
   });
 }
 
-function showRequestBookerStep(requestId) {
+function requestChangeToStep2(requestId, bookingId, onFinish) {
   return __awaiter(this, void 0, void 0, function* () {
-    yield simpleStepWindow('Booker for ' + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(requestId).learner, x => x.friendlyFullName), closeWindow => {
-      const matchingRecords = shared_1.matchings.state.getRecordCollectionOrFail();
-      const bookingRecords = shared_1.bookings.state.getRecordCollectionOrFail();
-      const tutorRecords = shared_1.tutors.state.getRecordCollectionOrFail();
-      const table = Table_1.TableWidget(['Booking', 'Mark as...', 'Todo', 'Finalize'], booking => {
-        const formSelectWidget = ui_1.FormSelectWidget(['unsent', 'waitingForTutor', 'waitingForLearner', 'rejectedByTutor', 'rejectedByLearner', 'rejected'], ['Unsent', 'Waiting for tutor', 'Waiting for learner', 'Rejected by tutor', 'Rejected by learner', 'Rejected for other reason']);
-        formSelectWidget.setValue(booking.status);
-        formSelectWidget.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
-          booking.status = newVal;
-          const response = yield shared_1.bookings.state.updateRecord(booking);
-
-          if (response.status === server_1.AskStatus.ERROR) {
-            shared_1.alertError(response.message);
-          }
-        }));
-        return [shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + ' <> ' + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName), formSelectWidget.dom, ui_1.ButtonWidget('Todo', () => showBookingMessagerStep(booking.id)).dom, ui_1.ButtonWidget('Finalize', () => {
-          finalizeBookingsStep(booking.id, () => closeWindow()());
-        }).dom];
-      }); // LOGIC: We use a toggle structure where:
-      // - There is a row of mod buttons
-      // - There is add functionality, but not delete functionality (bookings can be individually deleted)
-      // - Toggling the button toggles entries in a temporary array of all added bookings [[tutor, mod]] via. filters
-      // - Clicking "Save bookings and close" will write to the database
-
-      let bookingsInfo = [];
-      const potentialTable = Table_1.TableWidget(['Tutor', '# times booked', 'Book for mods...'], ({
-        tutorId,
-        mods,
-        numBookings
-      }) => {
-        const buttonsDom = $('<div></div>');
-
-        for (const {
-          mod,
-          isPref,
-          isAlreadyBooked
-        } of mods) {
-          const modLabel = mod + (isPref ? '*' : '');
-
-          if (isAlreadyBooked) {
-            buttonsDom.append(ui_1.ButtonWidget(modLabel + ' (already booked)', () => {}).dom);
-            continue;
-          }
-
-          const w = ui_1.FormToggleWidget(modLabel, 'Unbook ' + modLabel);
-          w.setValue(false);
-          w.onChange(newVal => {
-            if (newVal) {
-              bookingsInfo.push({
-                tutorId,
-                mod
-              });
-            } else {
-              bookingsInfo = bookingsInfo.filter(x => x.tutorId !== tutorId || x.mod !== mod);
-            }
-          });
-          buttonsDom.append(w.dom);
-        }
-
-        return [shared_1.tutors.createMarker(tutorId, x => x.friendlyFullName), String(numBookings), buttonsDom];
-      });
-      const saveBookingsButton = ui_1.ButtonWidget('Save bookings and close', () => __awaiter(this, void 0, void 0, function* () {
-        closeWindow()();
-
-        try {
-          for (const {
-            tutorId,
-            mod
-          } of bookingsInfo) {
-            const ask = yield shared_1.bookings.state.createRecord({
-              id: -1,
-              date: -1,
-              tutor: tutorId,
-              mod,
-              request: requestId,
-              status: 'unsent'
-            });
-
-            if (ask.status === server_1.AskStatus.ERROR) {
-              throw ask.message;
-            }
-          }
-        } catch (err) {
-          shared_1.alertError(err);
-        }
-      }));
-      table.setAllValues(Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id))); // LOGIC: calculating which tutors work for this request
-      // - tutor must not be matched at the target mod
-      // - tutor may be matched to another mod
-      // - for each tutor, keep track of which mods they've been matched to
-      // - SENDS TO TABLE: [ tutorId, [ mod, isPref: boolean ] ]
-
-      const requestRecord = shared_1.requests.state.getRecordOrFail(requestId);
-      const tutorIndex = {};
-
-      for (const x of Object.values(tutorRecords)) {
-        tutorIndex[String(x.id)] = {
-          id: x.id,
-          matchedMods: [],
-          bookedMods: []
-        };
-      }
-
-      for (const x of Object.values(matchingRecords)) {
-        tutorIndex[String(x.tutor)].matchedMods.push(x.mod);
-      }
-
-      for (const x of Object.values(bookingRecords)) {
-        tutorIndex[String(x.tutor)].bookedMods.push(x.mod);
-      }
-
-      const tableValues = [];
-
-      for (const tutor of Object.values(tutorIndex)) {
-        const modResults = [];
-
-        for (const mod of requestRecord.mods) {
-          if (!tutor.matchedMods.includes(mod)) {
-            const tutorRecord = shared_1.tutors.state.getRecordOrFail(tutor.id);
-
-            if (tutorRecord.mods.includes(mod)) {
-              modResults.push({
-                mod,
-                isPref: tutorRecord.modsPref.includes(mod),
-                isAlreadyBooked: tutor.bookedMods.includes(mod)
-              });
-            }
-          }
-        }
-
-        if (modResults.length > 0) {
-          tableValues.push({
-            tutorId: tutor.id,
-            mods: modResults,
-            numBookings: tutor.bookedMods.length
-          });
-        }
-      }
-
-      potentialTable.setAllValues(tableValues);
-      return shared_1.container('<div></div>')(table.dom, potentialTable.dom, saveBookingsButton.dom);
-    });
-  });
-}
-
-function showBookingMessagerStep(bookingId) {
-  return __awaiter(this, void 0, void 0, function* () {
-    const b = shared_1.bookings.state.getRecordOrFail(bookingId);
-    const r = shared_1.requests.state.getRecordOrFail(b.request);
-    yield simpleStepWindow(shared_1.container('<span></span>')('Messager for ', shared_1.learners.createMarker(r.learner, x => x.friendlyFullName), ' <> ', shared_1.tutors.createMarker(b.tutor, x => x.friendlyFullName)), closeWindow => {
-      const dom = $('<div></div>');
-
-      if (b.status === 'unsent') {
-        dom.append($('<p>Because status is "unsent", send the message to the tutor:</p>'));
-        dom.append(ui_1.MessageTemplateWidget(`Hi! Can you tutor a student in ${r.subject} on mod ${shared_1.stringifyMod(b.mod)}?`).dom);
-        dom.append($('<p>Once you send the message, go back and set the status to "waiting for tutor".</p>'));
-      }
-
-      if (b.status === 'waitingForTutor') {
-        dom.append($('<p>You are waiting for the tutor. Once the tutor replies, send a message to the learner:</p>'));
-        dom.append(ui_1.MessageTemplateWidget(`Hi! We have a tutor for you on mod ${shared_1.stringifyMod(b.mod)}. Can you come?`).dom);
-        dom.append($('<p>Once you send the message, go back and set the status to "waiting for learner".</p>'));
-      }
-
-      if (b.status === 'waitingForLearner') {
-        dom.append($('<p>You are waiting for the learner. Once the learner replies, if everything is good, go back and click "finalize".</p>'));
-      }
-
-      return dom;
-    });
-  });
-}
-
-function finalizeBookingsStep(bookingId, onVerify) {
-  return __awaiter(this, void 0, void 0, function* () {
-    if (yield isOperationConfirmedByUser({
-      thisOpDoes: ['Assigns the tutor to the learner, replacing the booking with a matching (this can be undone by deleting the matching and rebooking)', 'Deletes all other bookings associated with the learner'],
-      makeSureThat: ['The tutor and learner really should be matched']
-    })) {
-      onVerify();
+    if (yield isOperationConfirmedByUser("Are you sure you want to match these students?")) {
+      const {
+        closeModal
+      } = ui_1.showModal("Saving...", "", bb => [], true);
 
       try {
-        const b = shared_1.bookings.state.getRecordOrFail(bookingId);
-        const r = shared_1.requests.state.getRecordOrFail(b.request); // ADD MATCHING
+        const r = shared_1.requests.state.getRecordOrFail(requestId); // "choose" the booking
 
-        const ask = yield shared_1.matchings.state.createRecord({
-          learner: r.learner,
-          tutor: b.tutor,
-          subject: r.subject,
-          mod: b.mod,
-          status: 'unwritten',
-          specialRoom: r.specialRoom,
-          id: -1,
-          date: -1
-        });
+        r.chosenBooking = bookingId; // go to step 2
 
-        if (ask.status === server_1.AskStatus.ERROR) {
-          throw ask.message;
-        } // DELETE ALL BOOKINGS FOR REQUEST
+        r.step = 2; // update record
 
-
-        for (const booking of Object.values(shared_1.bookings.state.getRecordCollectionOrFail())) {
-          if (booking.request === r.id) {
-            const ask2 = yield shared_1.bookings.state.deleteRecord(booking.id);
-
-            if (ask2.status === server_1.AskStatus.ERROR) {
-              throw ask2.message;
-            }
-          }
-        }
+        shared_1.requests.state.updateRecord(r);
       } catch (err) {
-        alert(shared_1.stringifyError(err));
+        shared_1.alertError(err);
+      } finally {
+        closeModal();
+        onFinish();
       }
 
       return true;
@@ -2283,115 +2053,763 @@ function finalizeBookingsStep(bookingId, onVerify) {
   });
 }
 
-function finalizeMatchingsStep() {
-  return __awaiter(this, void 0, void 0, function* () {
-    yield simpleStepWindow('Finalize matchings', closeWindow => {
-      const table = Table_1.TableWidget(['Matching', 'Status', 'Write', 'Finalize'], record => {
-        const formSelectWidget = ui_1.FormSelectWidget(['unwritten', 'unsent', 'unfinalized'], ['Unwritten', 'Unsent', 'Unfinalized']);
-        formSelectWidget.setValue(record.status);
-        formSelectWidget.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
-          record.status = newVal;
-          const response = yield shared_1.matchings.state.updateRecord(record);
+function requestsNavigationScope(renavigate) {
+  function stepToName(step) {
+    if (step === 0) return "not started";
+    if (step === 1) return "booking";
+    if (step === 2) return "pass";
+    if (step === 3) return "confirmation";
+    return "???";
+  } // MAJOR FUNCTIONS
 
-          if (response.status === server_1.AskStatus.ERROR) {
-            shared_1.alertError(response.message);
+
+  function generatePotentialTable({
+    bookingsInfo,
+    tutorIndex,
+    request
+  }) {
+    const potentialTable = Table_1.TableWidget(["Tutor", "Book for mods..."], ({
+      tutorId,
+      mods
+    }) => {
+      const buttonsDom = $("<div></div>");
+
+      for (const {
+        mod,
+        isPref,
+        isAlreadyBooked,
+        isAlreadyDropIn
+      } of mods) {
+        const modLabel = mod + (isPref ? "*" : "") + (isAlreadyDropIn ? " (drop-in)" : "");
+
+        if (isAlreadyBooked) {
+          buttonsDom.append(ui_1.ButtonWidget(modLabel + " (already booked)", () => {}).dom);
+          continue;
+        }
+
+        const w = ui_1.FormToggleWidget(modLabel, "Unbook " + modLabel);
+        w.setValue(false);
+        w.onChange(newVal => {
+          if (newVal) {
+            bookingsInfo.push({
+              tutorId,
+              mod
+            });
+          } else {
+            bookingsInfo = bookingsInfo.filter(x => x.tutorId !== tutorId || x.mod !== mod);
           }
-        }));
-        return [shared_1.learners.createLabel(record.learner, x => x.friendlyFullName) + '<>' + shared_1.tutors.createLabel(record.tutor, x => x.friendlyFullName), formSelectWidget.dom, ui_1.ButtonWidget('Send', () => {
-          showMatchingSender(record.id);
-        }).dom, ui_1.ButtonWidget('Finalize', () => {
-          finalizeMatching(record.id, closeWindow());
-        }).dom];
-      });
-      const records = Object.values(shared_1.matchings.state.getRecordCollectionOrFail());
-      table.setAllValues(records.filter(x => x.status !== 'finalized'));
-      return table.dom;
+        });
+        buttonsDom.append(w.dom);
+      }
+
+      return [shared_1.tutors.createDataEditorMarker(tutorId, x => x.friendlyFullName), buttonsDom];
     });
-  });
-}
+    const potentialTableValues = [];
 
-function showMatchingSender(matchingId) {
-  return __awaiter(this, void 0, void 0, function* () {
-    const m = shared_1.matchings.state.getRecordOrFail(matchingId);
-    yield simpleStepWindow(shared_1.container('<span></span>')('Send matching: ', shared_1.learners.createMarker(m.learner, x => x.friendlyFullName), ' <> ', shared_1.tutors.createMarker(m.tutor, x => x.friendlyFullName)), closeWindow => {
-      const t = shared_1.tutors.state.getRecordOrFail(m.tutor);
-      const l = shared_1.learners.state.getRecordOrFail(m.learner);
-      return shared_1.container('<div></div>')('Send this to the learner.', ui_1.MessageTemplateWidget(`You will be tutored by ${t.friendlyFullName} during mod ${shared_1.stringifyMod(m.mod)}.`).dom, 'Then, send this to the tutor.', ui_1.MessageTemplateWidget(`You will be tutoring ${l.friendlyFullName} during mod ${shared_1.stringifyMod(m.mod)}.`).dom);
-    });
-  });
-}
+    for (const tutor of Object.values(tutorIndex)) {
+      const modResults = [];
 
-function finalizeMatching(matchingId, onVerify) {
-  return __awaiter(this, void 0, void 0, function* () {
-    if (yield isOperationConfirmedByUser({
-      thisOpDoes: ['Marks the matching as finalized, which posts it on the schedule page and attendance tracker'],
-      makeSureThat: ['Everyone is notified of the matching']
-    })) {
-      onVerify(); // MARK MATCHING AS FINALIZED
+      for (const mod of request.mods) {
+        if (!tutor.matchedMods.includes(mod)) {
+          const tutorRecord = shared_1.tutors.state.getRecordOrFail(tutor.id);
 
-      const r = shared_1.matchings.state.getRecordOrFail(matchingId);
-      r.status = 'finalized';
-      shared_1.matchings.state.updateRecord(r);
+          if (tutorRecord.mods.includes(mod)) {
+            modResults.push({
+              mod,
+              isPref: tutorRecord.modsPref.includes(mod),
+              isAlreadyBooked: tutor.bookedMods.includes(mod),
+              isAlreadyDropIn: tutorRecord.dropInMods.includes(mod)
+            });
+          }
+        }
+      }
+
+      if (modResults.length > 0 && tutor.bookedMods.length === 0) {
+        potentialTableValues.push({
+          tutorId: tutor.id,
+          mods: modResults
+        });
+      }
     }
-  });
+
+    potentialTable.setAllValues(potentialTableValues);
+    return potentialTable.dom;
+  }
+
+  function attemptRequestSubmissionConversion(record) {
+    return __awaiter(this, void 0, void 0, function* () {
+      // CREATE LEARNER
+      // try to dig up a learner with matching student ID, which would mean
+      // that the learner already exists in the database
+      const matches = Object.values(learnerRecords).filter(x => x.studentId === record.studentId);
+      let learnerRecord;
+
+      if (matches.length > 1) {
+        // duplicate learner student IDs??
+        // this should be validated in the database
+        throw new Error(`duplicate student id: "${record.studentId}"`);
+      } else if (matches.length == 0) {
+        // create new learner
+        learnerRecord = server_1.getResultOrFail((yield shared_1.learners.state.createRecord({
+          firstName: record.firstName,
+          lastName: record.lastName,
+          friendlyName: record.friendlyName,
+          friendlyFullName: record.friendlyFullName,
+          grade: record.grade,
+          id: -1,
+          date: -1,
+          studentId: record.studentId,
+          email: record.email,
+          phone: record.phone,
+          contactPref: record.contactPref,
+          homeroom: record.homeroom,
+          homeroomTeacher: record.homeroomTeacher,
+          attendanceAnnotation: "",
+          attendance: {}
+        })));
+      } else {
+        // learner already exists
+        learnerRecord = matches[0];
+      } // CREATE REQUEST
+
+
+      server_1.getResultOrFail((yield shared_1.requests.state.createRecord({
+        learner: learnerRecord.id,
+        id: -1,
+        date: -1,
+        mods: record.mods,
+        subject: record.subject,
+        specialRoom: record.specialRoom,
+        step: 1
+      }))); // MARK REQUEST SUBMISSION AS CHECKED
+      // NOTE: this is only done if the above steps worked
+      // so if there's an error, the request submission won't be obliterated
+
+      record.status = "checked";
+      server_1.getResultOrFail((yield shared_1.requestSubmissions.state.updateRecord(record)));
+    });
+  }
+
+  function generateRequestsTable() {
+    const requestsTable = Table_1.TableWidget(["Request", "Step #", "Open"], i => {
+      return [shared_1.requests.createDataEditorMarker(i.id, x => shared_1.learners.createLabel(x.learner, y => y.friendlyFullName)), String(requestIndex[i.id].uiStep), ui_1.ButtonWidget("Open", () => {
+        renavigate(["requests", i.id], false);
+      }).dom];
+    });
+    requestsTable.setAllValues(Object.values(requestRecords));
+    return requestsTable.dom;
+  }
+
+  function buildRequestIndex() {
+    const index = {};
+
+    for (const request of Object.values(requestRecords)) {
+      index[request.id] = {
+        id: request.id,
+        hasBookings: false,
+        uiStep: -1
+      };
+    }
+
+    for (const booking of Object.values(bookingRecords)) {
+      index[booking.request].hasBookings = true;
+    }
+
+    for (const i of Object.values(index)) {
+      if (!index[i.id].hasBookings && requestRecords[i.id].step === 1) {
+        index[i.id].uiStep = 0;
+      } else {
+        index[i.id].uiStep = requestRecords[i.id].step;
+      }
+    }
+
+    return index;
+  }
+
+  function buildRSButton() {
+    return ui_1.ButtonWidget("Convert new request submissions", () => __awaiter(this, void 0, void 0, function* () {
+      const {
+        closeModal
+      } = ui_1.showModal("Converting...", "", bb => [], true);
+
+      try {
+        for (const record of uncheckedRequestSubmissions) {
+          yield attemptRequestSubmissionConversion(record);
+        }
+      } catch (e) {
+        shared_1.alertError(e);
+      } finally {
+        closeModal();
+        ui_1.showModal("Conversion successful", "", bb => [bb("OK", "primary")]);
+      }
+
+      renavigate(["requests"], false);
+    })).dom;
+  }
+
+  function buildTutorIndex() {
+    const index = {};
+
+    for (const x of Object.values(tutorRecords)) {
+      index[String(x.id)] = {
+        id: x.id,
+        matchedMods: [],
+        bookedMods: []
+      };
+    }
+
+    for (const x of Object.values(matchingRecords)) {
+      index[String(x.tutor)].matchedMods.push(x.mod);
+    }
+
+    for (const x of Object.values(bookingRecords)) {
+      index[String(x.tutor)].bookedMods.push(x.mod);
+    }
+
+    return index;
+  }
+
+  function generateBookerTable(requestId) {
+    const bookerTable = Table_1.TableWidget(["Booking", "Status", "Todo", "Match"], booking => {
+      const formSelectWidget = ui_1.FormSelectWidget(["ignore", "unsent", "waitingForTutor", "rejected"], ["Ignore", "Unsent", "Waiting", "Rejected"]);
+      formSelectWidget.setValue(booking.status);
+      formSelectWidget.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
+        booking.status = newVal;
+        const response = yield shared_1.bookings.state.updateRecord(booking);
+
+        if (response.status === server_1.AskStatus.ERROR) {
+          shared_1.alertError(response.message);
+        }
+      }));
+      return [shared_1.bookings.createFriendlyMarker(booking.id, b => shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + " <> " + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName)), formSelectWidget.dom, ui_1.ButtonWidget("Todo", () => showStep1Messager(booking.id)).dom, ui_1.ButtonWidget("Match", () => {
+        requestChangeToStep2(requestId, booking.id, () => renavigate(["requests"], false));
+      }).dom];
+    });
+    bookerTable.setAllValues(Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id)));
+    return bookerTable.dom;
+  }
+
+  function generateEditBookingsButton({
+    bookingsInfo,
+    tutorIndex,
+    request
+  }) {
+    return ui_1.ButtonWidget("Edit bookings", () => {
+      ui_1.showModal("Edit bookings", generatePotentialTable({
+        bookingsInfo,
+        tutorIndex,
+        request
+      }), bb => [bb("Save", "primary", () => __awaiter(this, void 0, void 0, function* () {
+        try {
+          const {
+            closeModal
+          } = ui_1.showModal("Saving...", "", bb => []);
+
+          for (const {
+            tutorId,
+            mod
+          } of bookingsInfo) {
+            yield shared_1.bookings.state.createRecord({
+              id: -1,
+              date: -1,
+              tutor: tutorId,
+              mod,
+              request: request.id,
+              status: "unsent"
+            });
+          }
+
+          closeModal();
+          renavigate(["requests", request.id], false);
+        } catch (err) {
+          shared_1.alertError(err);
+        }
+      })), bb("Cancel", "secondary")]);
+    }).dom;
+  } // LOAD RESOURCES
+
+
+  const learnerRecords = shared_1.learners.state.getRecordCollectionOrFail();
+  const bookingRecords = shared_1.bookings.state.getRecordCollectionOrFail();
+  const matchingRecords = shared_1.matchings.state.getRecordCollectionOrFail();
+  const requestRecords = shared_1.requests.state.getRecordCollectionOrFail();
+  const tutorRecords = shared_1.tutors.state.getRecordCollectionOrFail();
+  const requestSubmissionRecords = shared_1.requestSubmissions.state.getRecordCollectionOrFail(); // FILTER FOR UNCHECKED REQUEST SUBMISSIONS
+
+  const uncheckedRequestSubmissions = Object.values(requestSubmissionRecords).filter(x => x.status === "unchecked"); // BUILD VARIABLES
+
+  const requestIndex = buildRequestIndex();
+  return {
+    generateMainContentPanel(navigationState) {
+      // RELEVANT TO ALL STEPS
+      const requestId = navigationState[0];
+
+      if (requestId === undefined) {
+        return null;
+      }
+
+      const request = shared_1.requests.state.getRecordOrFail(requestId);
+      const header = shared_1.container("<h1>")(shared_1.requests.createFriendlyMarker(requestId, () => "Request"), ": ", shared_1.learners.createFriendlyMarker(shared_1.requests.state.getRecordOrFail(requestId).learner, x => x.friendlyFullName), shared_1.container('<span class="badge badge-secondary">')(`Step ${requestIndex[requestId].uiStep} (${stepToName(requestIndex[requestId].uiStep)})`)); // LOGIC: We use a toggle structure where:
+      // - There is a row of mod buttons
+      // - There is add functionality, but not delete functionality (bookings can be individually deleted)
+      // - Toggling the button toggles entries in a temporary array of all added bookings [[tutor, mod]] via. filters
+      // - Clicking "Save bookings and close" will write to the database
+
+      let bookingsInfo = []; // LOGIC: calculating which tutors work for this request
+      // - tutor must not be matched at the target mod
+      // - tutor may be matched to another mod
+      // - for each tutor, keep track of which mods they've been matched to
+      // - SENDS TO TABLE: [ tutorId, [ mod, isPref: boolean ] ]
+
+      const tutorIndex = buildTutorIndex();
+
+      if (requestIndex[requestId].uiStep < 2) {
+        const uiStep01 = shared_1.container("<div></div>")(header, generateBookerTable(requestId), generateEditBookingsButton({
+          bookingsInfo,
+          tutorIndex,
+          request
+        }));
+        return uiStep01;
+      }
+
+      if (requestIndex[requestId].uiStep === 2) {
+        const uiStep2 = shared_1.container('<div class="jumbotron">')(shared_1.container("<h1>")("Write a pass for the learner"), shared_1.container('<p class="lead">')("Here is the information:"), shared_1.container("<p>")("Homeroom = " + shared_1.learners.createLabel(requestRecords[requestId].learner, x => x.homeroom)), shared_1.container("<p>")("Homeroom teacher = " + shared_1.learners.createLabel(requestRecords[requestId].learner, x => x.homeroomTeacher)), ui_1.ButtonWidget("OK, I've written the pass", () => requestChangeToStep3(requestId, () => renavigate(["requests", requestId], false))).dom);
+        return uiStep2;
+      }
+
+      if (requestIndex[requestId].uiStep === 3) {
+        const uiStep3 = shared_1.container('<div class="jumbotron">')(shared_1.container("<h1>")("Send a confirmation to the learner"), ui_1.ButtonWidget("Send confirmation", () => showStep3Messager(request.chosenBooking)).dom, shared_1.container('<p class="lead">')("After that, click the button below, and the tutor will be assigned for real."), ui_1.ButtonWidget("OK, let's assign the tutor for real", () => requestChangeToStep4(requestId, () => renavigate(["requests", requestId], false))).dom);
+        return uiStep3;
+      }
+
+      if (requestIndex[requestId].uiStep === 4) {
+        const uiStep4 = shared_1.container('<div class="jumbotron">')(shared_1.container("<h1>")("This request appears to be done"), shared_1.requests.createFriendlyMarker(requestId, () => "Open advanced request editor confirmation"));
+        return uiStep4;
+      }
+    },
+
+    sidebar: shared_1.container("<div>")(shared_1.container("<h1>")("Requests"), uncheckedRequestSubmissions.length > 0 ? buildRSButton() : undefined, generateRequestsTable())
+  };
 }
 
-function attendanceStep() {
-  return __awaiter(this, void 0, void 0, function* () {
-    yield simpleStepWindow('Attendance', _closeWindow => {
-      const t = Object.values(shared_1.tutors.state.getRecordCollectionOrFail());
-      const l = Object.values(shared_1.learners.state.getRecordCollectionOrFail());
-      const table = Table_1.TableWidget( // Both learners and tutors are students.
-      ['Student', 'Total minutes', 'Attendance level', 'Details'], ({
-        isLearner,
-        student
-      }) => {
-        // calculate the attendance level & totals
-        let numPresent = 0;
-        let numAbsent = 0;
-        let totalMinutes = 0;
+function scheduleEditNavigationScope(renavigate) {
+  // LOAD RECORD COLLECTIONS
+  const bookingRecords = shared_1.bookings.state.getRecordCollectionOrFail();
+  const matchingRecords = shared_1.matchings.state.getRecordCollectionOrFail();
+  const tutorRecords = shared_1.tutors.state.getRecordCollectionOrFail(); // CREATE AN INDEX OF OLD DROP-IN MODS
 
-        for (const x of Object.values(student.attendance)) {
-          for (const {
-            minutes
-          } of x) {
-            if (minutes > 0) {
-              ++numPresent;
-            } else {
-              ++numAbsent;
-            }
+  const oldDropInModsIndex = {};
 
-            totalMinutes += minutes;
+  for (const tutor of Object.values(tutorRecords)) {
+    oldDropInModsIndex[tutor.id] = tutor.dropInMods;
+  } // CREATE AN INDEX OF EDITED DROP-IN MODS (DEEP COPY)
+
+
+  const editedDropInModsIndex = JSON.parse(JSON.stringify(oldDropInModsIndex)); // ON SAVE, COMPARE THE TWO INDEXES
+
+  function onSave() {
+    return __awaiter(this, void 0, void 0, function* () {
+      const {
+        closeModal
+      } = ui_1.showModal("Saving...", "", bb => [], true);
+
+      try {
+        let wereChanges = false;
+
+        for (const [idString, oldDropInMods] of Object.entries(oldDropInModsIndex)) {
+          oldDropInMods.sort();
+          const editedDropInMods = editedDropInModsIndex[idString];
+          editedDropInMods.sort();
+
+          if (!shared_1.arrayEqual(oldDropInMods, editedDropInMods)) {
+            wereChanges = true; // this gets rid of duplicates as well
+
+            tutorRecords[idString].dropInMods = [...new Set(editedDropInMods)];
+            server_1.getResultOrFail((yield shared_1.tutors.state.updateRecord(tutorRecords[idString])));
           }
         }
 
-        return [(isLearner ? shared_1.learners : shared_1.tutors).createLabel(student.id, x => x.friendlyFullName), String(totalMinutes), `${numPresent}P / ${numAbsent}A`, ui_1.ButtonWidget('Details', () => {
-          attendanceDetailsStep({
-            isLearner,
-            student
-          });
-        }).dom];
-      });
-      table.setAllValues(t.map(x => ({
-        isLearner: false,
-        student: x
-      })).concat(l.map(x => ({
-        isLearner: true,
-        student: x
-      }))));
-      return table.dom;
+        if (!wereChanges) {
+          // no changes
+          ui_1.showModal("No changes were detected in the schedule, so nothing was saved.", "", bb => [bb("OK", "primary")]);
+        }
+      } catch (e) {
+        shared_1.alertError(e);
+      } finally {
+        closeModal();
+      }
     });
-  });
+  } // INIT DOM
+
+
+  const availableDomA = shared_1.container("<div>")();
+  const availableDomB = shared_1.container("<div>")();
+
+  for (let i = 0; i < 10; ++i) {
+    availableDomA.append(shared_1.container("<div>")($('<p class="lead"><strong></strong></p>').text(`Mod ${i + 1}`), shared_1.container('<ul class="list-group">')()));
+  }
+
+  for (let i = 0; i < 10; ++i) {
+    availableDomB.append(shared_1.container("<div>")($('<p class="lead"><strong></strong></p>').text(`Mod ${i + 11}`), shared_1.container('<ul class="list-group">')()));
+  }
+
+  const scheduleDomA = shared_1.container("<div>")();
+  const scheduleDomB = shared_1.container("<div>")();
+
+  for (let i = 0; i < 10; ++i) {
+    scheduleDomA.append(shared_1.container("<div>")($('<p class="lead"><strong></strong></p>').text(`Mod ${i + 1}`), shared_1.container('<ul class="list-group">')()));
+  }
+
+  for (let i = 0; i < 10; ++i) {
+    scheduleDomB.append(shared_1.container("<div>")($('<p class="lead"><strong></strong></p>').text(`Mod ${i + 11}`), shared_1.container('<ul class="list-group">')()));
+  } // CREATE INDEX OF TUTORS --> [ STATUS, STATUS, STATUS ... ] for each mod
+
+
+  const tutorModStatusIndex = {};
+
+  for (const tutor of Object.values(tutorRecords)) {
+    tutorModStatusIndex[tutor.id] = {
+      id: tutor.id,
+      modStatus: []
+    };
+
+    for (let i = 0; i < 20; ++i) {
+      tutorModStatusIndex[tutor.id].modStatus.push("none");
+    } // mod status: available
+
+
+    for (const mod of tutor.mods) {
+      tutorModStatusIndex[tutor.id].modStatus[mod - 1] = "available";
+    } // mod status: drop-in
+
+
+    for (const mod of tutor.dropInMods) {
+      if (tutorModStatusIndex[tutor.id].modStatus[mod - 1] === "available") {
+        tutorModStatusIndex[tutor.id].modStatus[mod - 1] = "dropIn";
+      }
+    } // preferred mods
+
+
+    for (const mod of tutor.modsPref) {
+      tutorModStatusIndex[tutor.id].modStatus[mod - 1] += "Pref";
+    }
+  }
+
+  for (const booking of Object.values(bookingRecords)) {
+    if (booking.status !== "ignore" && booking.status !== "rejected") {
+      tutorModStatusIndex[booking.tutor].modStatus[booking.mod - 1] = ["booked", booking.id];
+    }
+  }
+
+  for (const matching of Object.values(matchingRecords)) {
+    tutorModStatusIndex[matching.tutor].modStatus[matching.mod - 1] = ["matched", matching.id];
+  }
+
+  function popupUtilPlaceElement(domA, domB, {
+    mod,
+    element,
+    popoverContent
+  }) {
+    if (mod > 10) {
+      domB.children().eq(mod - 11).children().eq(1).append(element);
+    } else {
+      domA.children().eq(mod - 1).children().eq(1).append(element);
+    }
+
+    const popoverContentDom = $("<div>");
+    element.popover({
+      content: popoverContentDom[0],
+      placement: "auto",
+      html: true,
+      trigger: "click"
+    });
+    element.on("show.bs.popover", () => {
+      popoverContentDom.empty();
+      popoverContentDom.append(popoverContent());
+    });
+  }
+
+  function popupUtilCountUnavailable(id) {
+    let x = 0;
+
+    for (let i = 0; i < 20; ++i) {
+      const status = tutorModStatusIndex[id].modStatus[i];
+
+      if (status !== "none" && status !== "available" && status !== "availablePref") {
+        ++x;
+      }
+    }
+
+    return x;
+  }
+
+  function generatePopupAvailable(id, mod) {
+    const initialStatus = tutorModStatusIndex[id].modStatus[mod - 1];
+
+    if (typeof initialStatus !== "string") {
+      throw new Error("typecheck failed in generatePopupSchedule");
+    }
+
+    const element = shared_1.container('<li class="list-group-item list-group-item-action">')(shared_1.tutors.createLabel(id, x => x.friendlyFullName), initialStatus.endsWith("Pref") ? "*" : "");
+
+    if (initialStatus.endsWith("Pref")) {
+      element.addClass("text-primary");
+    }
+
+    function popoverContent() {
+      const popoverContent = shared_1.container('<div class="btn-group m-2">')();
+      popoverContent.append(ui_1.ButtonWidget(`(${popupUtilCountUnavailable(id)}x)`, () => {}).dom);
+
+      for (let i = 0; i < 20; ++i) {
+        const status = tutorModStatusIndex[id].modStatus[i];
+        if (typeof status !== "string" || !status.startsWith("available")) continue;
+        popoverContent.append(ui_1.ButtonWidget(String(i + 1) + (status === "availablePref" ? "*" : ""), () => {
+          const arr = editedDropInModsIndex[id]; // add the new mod
+
+          arr.push(i + 1); // sort
+
+          arr.sort(); // edit status index
+
+          tutorModStatusIndex[id].modStatus[i] = tutorModStatusIndex[id].modStatus[i] === "availablePref" ? "dropInPref" : "dropIn"; // hide popover
+
+          element.popover("hide"); // rebind data handler
+
+          generatePopupSchedule(id, i + 1);
+        }).dom);
+      }
+
+      return popoverContent;
+    }
+
+    popupUtilPlaceElement(availableDomA, availableDomB, {
+      mod,
+      element,
+      popoverContent
+    });
+  }
+
+  function generatePopupSchedule(id, mod) {
+    const initialStatus = tutorModStatusIndex[id].modStatus[mod - 1];
+
+    if (typeof initialStatus !== "string") {
+      throw new Error("typecheck failed in generatePopupSchedule");
+    }
+
+    const element = shared_1.container('<li class="list-group-item list-group-item-action">')(shared_1.tutors.createLabel(id, x => x.friendlyFullName), initialStatus.endsWith("Pref") ? "*" : "");
+
+    if (initialStatus.endsWith("Pref")) {
+      element.addClass("text-primary");
+    }
+
+    function popoverContent() {
+      const popoverContent = shared_1.container('<div class="btn-group m-2">')();
+      popoverContent.append(ui_1.ButtonWidget(`(${popupUtilCountUnavailable(id)}x)`, () => {}).dom);
+
+      for (let i = 0; i < 20; ++i) {
+        const status = tutorModStatusIndex[id].modStatus[i];
+        if (typeof status !== "string" || !status.startsWith("available")) continue;
+        popoverContent.append(ui_1.ButtonWidget(String(i + 1) + (status === "availablePref" ? "*" : ""), () => {
+          // remove the mod
+          const arr = editedDropInModsIndex[id];
+          arr.splice(arr.indexOf(mod), 1); // add the mod
+
+          arr.push(i + 1); // sort
+
+          arr.sort(); // edit status index
+
+          tutorModStatusIndex[id].modStatus[mod - 1] = tutorModStatusIndex[id].modStatus[mod - 1] === "dropInPref" ? "availablePref" : "available";
+          tutorModStatusIndex[id].modStatus[i] = tutorModStatusIndex[id].modStatus[i] === "availablePref" ? "dropInPref" : "dropIn"; // dispose popover
+
+          element.popover("dispose"); // destroy element
+
+          element.remove(); // recreate popup
+
+          generatePopupSchedule(id, i + 1);
+        }).dom);
+      }
+
+      popoverContent.append(ui_1.ButtonWidget("X", () => {
+        // remove the mod entirely
+        const arr = editedDropInModsIndex[id];
+        arr.splice(arr.indexOf(mod), 1); // sort
+
+        arr.sort(); // edit status index
+
+        tutorModStatusIndex[id].modStatus[mod - 1] = tutorModStatusIndex[id].modStatus[mod - 1] === "dropInPref" ? "availablePref" : "available"; // detach element
+
+        element.detach(); // dispose popover
+
+        element.popover("dispose");
+      }).dom);
+      return popoverContent;
+    }
+
+    popupUtilPlaceElement(scheduleDomA, scheduleDomB, {
+      mod,
+      element,
+      popoverContent
+    });
+  }
+
+  function generatePopupScheduleMatch(id, mod) {
+    const initialStatus = tutorModStatusIndex[id].modStatus[mod - 1];
+
+    if (!Array.isArray(initialStatus)) {
+      throw new Error("typecheck failed in generatePopupScheduleMatch");
+    }
+
+    const matchingId = initialStatus[1];
+    const element = shared_1.container('<li class="text-danger list-group-item">')(shared_1.matchings.createLabel(matchingId, x => shared_1.tutors.createLabel(x.tutor, y => y.friendlyFullName) + " (matched)"));
+
+    function popoverContent() {
+      return shared_1.container("<span>")("Details:", shared_1.matchings.createDomLabel(matchingId, x => shared_1.container("<span>")(shared_1.tutors.createFriendlyMarker(x.tutor, y => y.friendlyFullName), " <> ", shared_1.learners.createFriendlyMarker(x.learner, y => y.friendlyFullName))));
+    }
+
+    popupUtilPlaceElement(scheduleDomA, scheduleDomB, {
+      mod,
+      element,
+      popoverContent
+    });
+  }
+
+  function generatePopupScheduleBook(id, mod, bookingId) {
+    const initialStatus = tutorModStatusIndex[id].modStatus[mod - 1];
+
+    if (!Array.isArray(initialStatus)) {
+      throw new Error("typecheck failed in generatePopupScheduleBook");
+    }
+
+    const element = shared_1.container('<li class="text-danger list-group-item list-group-item-action">')(shared_1.tutors.createLabel(id, x => x.friendlyFullName), " (booked)");
+
+    function popoverContent() {
+      return shared_1.container("<span>")("Details:", shared_1.bookings.createDomLabel(bookingId, x => shared_1.container("<span>")(shared_1.tutors.createFriendlyMarker(x.tutor, y => y.friendlyFullName), " <> ", shared_1.requests.createFriendlyMarker(x.request, y => "link to request", () => renavigate(["requests", x.request], false)))));
+    }
+
+    popupUtilPlaceElement(scheduleDomA, scheduleDomB, {
+      mod,
+      element,
+      popoverContent
+    });
+  }
+
+  for (const {
+    id,
+    modStatus
+  } of Object.values(tutorModStatusIndex)) {
+    for (let i = 0; i < 20; ++i) {
+      const status = modStatus[i];
+
+      if (Array.isArray(status)) {
+        if (status[0] === "matched") {
+          generatePopupScheduleMatch(id, i + 1);
+        }
+
+        if (status[0] === "booked") {
+          generatePopupScheduleBook(id, i + 1, status[1]);
+        }
+      }
+
+      if (typeof status === "string") {
+        if (status.startsWith("dropIn")) {
+          generatePopupAvailable(id, i + 1);
+          generatePopupSchedule(id, i + 1);
+        }
+
+        if (status.startsWith("available")) {
+          generatePopupAvailable(id, i + 1);
+        }
+      }
+    }
+  }
+
+  function generateMainContentPanel(newNavigationState) {
+    const day = newNavigationState[0];
+    return shared_1.container('<div class="layout-h">')(shared_1.container('<div class="layout-v">')(shared_1.container('<h1 class="text-center layout-item-fit">')("Available"), shared_1.container('<div class="overflow-auto p-2">')(availableDomA.addClass("overflow-auto").toggleClass("d-none", !day.includes("A")), availableDomB.addClass("overflow-auto").toggleClass("d-none", !day.includes("B")))), shared_1.container('<div class="layout-v">')(shared_1.container('<h1 class="text-center layout-item-fit">')("Schedule", ui_1.ButtonWidget("Save", () => onSave()).dom, ui_1.ButtonWidget("A days", () => renavigate(["scheduleEdit", "A"], true)).dom, ui_1.ButtonWidget("B days", () => renavigate(["scheduleEdit", "B"], true)).dom, ui_1.ButtonWidget("Both days", () => renavigate(["scheduleEdit", "AB"], true)).dom), shared_1.container('<div class="overflow-auto p-2">')(scheduleDomA.toggleClass("d-none", !day.includes("A")), scheduleDomB.toggleClass("d-none", !day.includes("B")))));
+  }
+
+  return {
+    generateMainContentPanel
+  };
 }
 
-function attendanceDetailsStep({
-  isLearner,
-  student
-}) {
-  return __awaiter(this, void 0, void 0, function* () {
-    yield simpleStepWindow(shared_1.container('<span>')('Attendance for ', (isLearner ? shared_1.learners : shared_1.tutors).createMarker(student.id, x => x.friendlyFullName)), _closeWindow => {
+function attendanceNavigationScope(renavigate) {
+  const t = Object.values(shared_1.tutors.state.getRecordCollectionOrFail());
+  const l = Object.values(shared_1.learners.state.getRecordCollectionOrFail());
+  const sidebarTable = Table_1.TableWidget( // Both learners and tutors are students.
+  ["Student", "Total minutes", "Attendance level", "Details"], ({
+    isLearner,
+    student
+  }) => {
+    // calculate the attendance level & totals
+    let numPresent = 0;
+    let numExcused = 0;
+    let numAbsent = 0;
+    let totalMinutes = 0;
+
+    if (student.additionalHours !== undefined) {
+      totalMinutes += student.additionalHours;
+    }
+
+    for (const x of Object.values(student.attendance)) {
+      for (const {
+        minutes
+      } of x) {
+        if (minutes === 1) {
+          ++numExcused;
+        } else if (minutes <= 0) {
+          ++numAbsent;
+        } else {
+          ++numPresent;
+        }
+
+        totalMinutes += minutes;
+      }
+    }
+
+    return [(isLearner ? shared_1.learners : shared_1.tutors).createLabel(student.id, x => x.friendlyFullName), String(totalMinutes), `${numPresent}P / ${numExcused}EX / ${numAbsent}A`, ui_1.ButtonWidget("Details", () => {
+      renavigate(["attendance", student.id], true);
+    }).dom];
+  });
+  const data = t.map(x => ({
+    isLearner: false,
+    student: x
+  })).concat(l.map(x => ({
+    isLearner: true,
+    student: x
+  })));
+  sidebarTable.setAllValues(data);
+  return {
+    generateMainContentPanel(navigationState) {
+      const studentId = navigationState[0];
+
+      if (studentId === undefined) {
+        return null;
+      }
+
+      const matchingStudents = data.filter(x => x.student.id === studentId);
+
+      if (matchingStudents.length !== 1) {
+        throw new Error("no matching students with ID");
+      }
+
+      const {
+        isLearner,
+        student
+      } = matchingStudents[0];
+      const header = shared_1.container("<h1>")((isLearner ? shared_1.learners : shared_1.tutors).createFriendlyMarker(student.id, x => x.friendlyFullName));
+      const attendanceAnnotation = ui_1.FormTextareaWidget();
+      attendanceAnnotation.setValue(student.attendanceAnnotation);
+      attendanceAnnotation.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
+        student.attendanceAnnotation = newVal;
+
+        try {
+          server_1.getResultOrFail((yield (isLearner ? shared_1.learners : shared_1.tutors).state.updateRecord(student)));
+        } catch (e) {
+          shared_1.alertError(e);
+        }
+      }));
       const table = Table_1.TableWidget( // Both learners and tutors are students.
-      ['Date', 'Mod', 'Present?'], attendanceEntry => {
+      ["Date", "Mod", "Present?"], attendanceEntry => {
         return [new Date(attendanceEntry.date).toISOString().substring(0, 10), String(attendanceEntry.mod), attendanceEntry.minutes > 0 ? `P (${attendanceEntry.minutes} minutes)` : $('<span style="color:red">ABSENT</span>')];
       });
       const attendanceData = [];
@@ -2403,46 +2821,217 @@ function attendanceDetailsStep({
       }
 
       table.setAllValues(attendanceData);
-      return table.dom;
-    });
-  });
+      return shared_1.container("<div>")(header, $('<p class="lead">Attendance annotation:</p>'), attendanceAnnotation.dom, table.dom);
+    },
+
+    sidebar: shared_1.container("<div>")($("<h1>Attendance</h1>"), sidebarTable.dom)
+  };
+}
+
+function homepageNavigationScope() {
+  return {
+    generateMainContentPanel: () => shared_1.container("<h1>")("ARC App homepage")
+  };
+}
+
+function aboutNavigationScope() {
+  return {
+    generateMainContentPanel: () => shared_1.container("<div>")(shared_1.container("<h1>")("About"), shared_1.container("<p>")("Designed by Suhao Jeffrey Huang"))
+  };
 }
 /*
 
 ROOT WIDGET
 
+(MAIN ENTRYPOINT)
+
 */
 
 
 function rootWidget() {
-  function PillsWidget() {
-    const dom = $(pillsString);
-    dom.find('a').css('cursor', 'pointer').click(ev => {
-      const text = $(ev.target).text();
-      if (text == 'Tutors') shared_1.tutors.makeTiledViewAllWindow();
-      if (text == 'Learners') shared_1.learners.makeTiledViewAllWindow();
-      if (text == 'Bookings') shared_1.bookings.makeTiledViewAllWindow();
-      if (text == 'Matchings') shared_1.matchings.makeTiledViewAllWindow();
-      if (text == 'Request submissions') shared_1.requestSubmissions.makeTiledViewAllWindow();
-      if (text == 'Requests') shared_1.requests.makeTiledViewAllWindow();
-      ev.preventDefault();
-      if (text == 'About') ui_1.showModal('About', 'Made by Suhao Jeffrey Huang', bb => [bb('OK', 'primary')]);
+  let navigationState = [];
+  let currentNavigationScope = homepageNavigationScope();
 
-      if (text == 'Force refresh') {
-        shared_1.tutors.state.forceRefresh();
-        shared_1.learners.state.forceRefresh();
-        shared_1.bookings.state.forceRefresh();
-        shared_1.matchings.state.forceRefresh();
-        shared_1.requests.state.forceRefresh();
-        shared_1.requestSubmissions.state.forceRefresh();
+  function renavigate(newNavigationState, keepScope) {
+    console.log(newNavigationState, keepScope);
 
-        for (const window of shared_1.state.tiledWindows.val) {
-          window.onLoad.trigger();
+    try {
+      navigationState = newNavigationState;
+
+      if (keepScope) {
+        if (navigationState[0] === "requests") {
+          currentNavigationScope.generateMainContentPanel([navigationState[1]]);
+        }
+
+        if (navigationState[0] === "attendance") {
+          currentNavigationScope.generateMainContentPanel([navigationState[1]]);
+        }
+
+        if (navigationState[0] === "scheduleEdit") {
+          currentNavigationScope.generateMainContentPanel([navigationState[1]]);
+        }
+      } else {
+        if (newNavigationState[0] === undefined) {
+          currentNavigationScope = homepageNavigationScope();
+        }
+
+        if (navigationState[0] === "about") {
+          currentNavigationScope = aboutNavigationScope();
+        }
+
+        if (navigationState[0] === "requests") {
+          currentNavigationScope = requestsNavigationScope(renavigate);
+        }
+
+        if (navigationState[0] === "scheduleEdit") {
+          currentNavigationScope = scheduleEditNavigationScope(renavigate);
+        }
+
+        if (navigationState[0] === "scheduleView") {
+          //currentNavigationScope = scheduleViewNavigationScope()
+          ui_1.showModal("Not supported", "The view schedule feature is not supported. You shouldn't need it.", bb => [bb("OK", "primary")]);
+        }
+
+        if (navigationState[0] === "attendance") {
+          currentNavigationScope = attendanceNavigationScope(renavigate);
+        }
+
+        generateSidebar(currentNavigationScope.sidebar, keepScope);
+      }
+
+      generateMainContentPanel(currentNavigationScope.generateMainContentPanel(navigationState.slice(1)), keepScope);
+    } catch (e) {
+      shared_1.alertError(e); // TODO
+    }
+  }
+
+  function generateSidebar(content, keepScope) {
+    if (!keepScope) {
+      // deal with popovers
+      $(".popover").popover("dispose");
+    } else {
+      $(".popover").popover("hide");
+    }
+
+    sidebarDom.empty();
+    sidebarDom.removeClass("col-4 overflow-auto app-sidebar d-none");
+
+    if (content) {
+      sidebarDom.addClass("col-4 overflow-auto app-sidebar");
+      sidebarDom.append(content);
+    } else {
+      sidebarDom.addClass("d-none");
+    }
+  }
+
+  function generateMainContentPanel(content, keepScope) {
+    if (!keepScope) {
+      // deal with popovers
+      $(".popover").popover("dispose");
+    } else {
+      $(".popover").popover("hide");
+    }
+
+    mainContentPanelDom.empty();
+    mainContentPanelDom.removeClass("col app-content-panel layout-v");
+
+    if (content) {
+      mainContentPanelDom.append(content);
+      mainContentPanelDom.addClass("col app-content-panel layout-v");
+    }
+  }
+
+  function generateNavigationBar() {
+    const dom = $(navigationBarString);
+    dom.find("a").css("cursor", "pointer").click(ev => {
+      function command(name, textName, loadingMessage, finish) {
+        if (text == textName) {
+          ;
+
+          (() => __awaiter(this, void 0, void 0, function* () {
+            const {
+              closeModal
+            } = ui_1.showModal(loadingMessage, "", bb => []);
+
+            try {
+              const result = server_1.getResultOrFail((yield server_1.askServer(["command", name])));
+              yield finish(result);
+            } catch (e) {
+              shared_1.alertError(e);
+            } finally {
+              closeModal();
+            }
+          }))();
         }
       }
 
-      if (text == 'Testing mode') {
-        window['APP_DEBUG_MOCK'] = 1;
+      ev.preventDefault();
+      const text = $(ev.target).text(); // DATA EDITOR
+      // the data editor isn't considered a navigation state
+
+      if (text == "Tutors") shared_1.tutors.makeTiledViewAllWindow();
+      if (text == "Learners") shared_1.learners.makeTiledViewAllWindow();
+      if (text == "Bookings") shared_1.bookings.makeTiledViewAllWindow();
+      if (text == "Matchings") shared_1.matchings.makeTiledViewAllWindow();
+      if (text == "Request submissions") shared_1.requestSubmissions.makeTiledViewAllWindow();
+      if (text == "Requests") shared_1.requests.makeTiledViewAllWindow(); // SCHEDULER
+
+      if (text == "Handle requests") {
+        renavigate(["requests"], false);
+      }
+
+      if (text == "Edit schedule") {
+        renavigate(["scheduleEdit", "A"], false);
+      }
+
+      if (text == "View schedule") {
+        renavigate(["scheduleView"], false);
+      } // ATTENDANCE
+
+
+      if (text == "Attendance") {
+        renavigate(["attendance"], false);
+      } // COMMANDS
+
+
+      command("syncDataFromForms", "Sync data from forms", "Syncing data...", result => __awaiter(this, void 0, void 0, function* () {
+        ui_1.showModal("Sync successful", `${result} new form submissions found`, bb => [bb("OK", "primary")]);
+      }));
+      command("generateSchedule", "Generate schedule", "Generating schedule...", result => __awaiter(this, void 0, void 0, function* () {
+        ui_1.showModal("Schedule successfully generated", `The schedule in the spreadsheet has been updated`, bb => [bb("OK", "primary")]);
+      }));
+      command("recalculateAttendance", "Recalculate attendance", "Recalculating attendance...", result => __awaiter(this, void 0, void 0, function* () {
+        ui_1.showModal(`Attendance successfully recalculated: ${result} attendances were modified`, "", bb => [bb("OK", "primary")]);
+      })); // MISC
+
+      if (text == "After-school availability") {
+        showAfterSchoolAvailablityModal();
+      }
+
+      if (text == "About") {
+        renavigate(["about"], false);
+      }
+
+      if (text == "Force refresh") {
+        ;
+
+        (() => __awaiter(this, void 0, void 0, function* () {
+          const {
+            closeModal
+          } = ui_1.showModal("Loading force refresh...", "", bb => [], true);
+          yield shared_1.tutors.state.forceRefresh();
+          yield shared_1.learners.state.forceRefresh();
+          yield shared_1.bookings.state.forceRefresh();
+          yield shared_1.matchings.state.forceRefresh();
+          yield shared_1.requests.state.forceRefresh();
+          yield shared_1.requestSubmissions.state.forceRefresh();
+          renavigate(navigationState, false);
+          closeModal();
+        }))();
+      }
+
+      if (text == "Testing mode") {
+        window["APP_DEBUG_MOCK"] = 1;
         shared_1.tutors.state.forceRefresh();
         shared_1.learners.state.forceRefresh();
         shared_1.bookings.state.forceRefresh();
@@ -2456,37 +3045,21 @@ function rootWidget() {
 
         showTestingModeWarning();
       }
-
-      if (text == 'Check request submissions') {
-        checkRequestSubmissionsStep();
-      }
-
-      if (text == 'Handle requests and bookings') {
-        handleRequestsAndBookingsStep();
-      }
-
-      if (text == 'Finalize matchings') {
-        finalizeMatchingsStep();
-      }
-
-      if (text == 'Attendance') {
-        attendanceStep();
-      }
     });
-    return {
-      dom
-    };
+    return dom[0];
   }
 
-  const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit">')($('<strong class="mr-4">ARC</strong>'), PillsWidget().dom), shared_1.container('<nav class="navbar layout-item-fit layout-v"></div>')(WindowsBar_1.WindowsBarWidget().dom), shared_1.container('<div class="layout-item-scroll"></div>')(TilingWindowManager_1.TilingWindowManagerWidget().dom));
-  if (window['APP_DEBUG_MOCK'] === 1) showTestingModeWarning();
+  const sidebarDom = shared_1.container("<div></div>")();
+  const mainContentPanelDom = shared_1.container("<div></div>")();
+  const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit">')($('<strong class="mr-4">ARC</strong>'), generateNavigationBar()), shared_1.container('<div class="row m-4 layout-h">')(sidebarDom, mainContentPanelDom));
+  if (window["APP_DEBUG_MOCK"] === 1) showTestingModeWarning();
   return {
     dom
   };
 }
 
 exports.rootWidget = rootWidget;
-},{"./shared":"m0/6","../widgets/ui":"T2q6","../widgets/TilingWindowManager":"5dK+","../widgets/WindowsBar":"fk88","../widgets/Window":"8cu6","../widgets/Table":"Jwlf","../widgets/ActionBar":"DVx/","./server":"ZgGC"}],"7QCb":[function(require,module,exports) {
+},{"./shared":"m0/6","../widgets/ui":"T2q6","../widgets/Table":"Jwlf","./server":"ZgGC"}],"7QCb":[function(require,module,exports) {
 "use strict";
 
 var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
@@ -2525,19 +3098,19 @@ const shared_1 = require("./core/shared");
 
 const widget_1 = require("./core/widget");
 
-console.log('hi there!');
+console.log("hi there!");
 
-window['appOnReady'] = () => __awaiter(this, void 0, void 0, function* () {
+window["appOnReady"] = () => __awaiter(this, void 0, void 0, function* () {
   // TODO: replace with proper loading widget
-  $('body').append($('<h1 id="app">Loading...</h1>'));
+  $("body").append($('<h1 id="app">Loading...</h1>'));
   yield shared_1.initializeResources();
-  $('body').empty();
-  $('body').append(widget_1.rootWidget().dom);
+  $("body").empty();
+  $("body").append(widget_1.rootWidget().dom);
 });
 
-$(document).ready(window['appOnReady']);
+$(document).ready(window["appOnReady"]);
 },{"./core/shared":"m0/6","./core/widget":"o4ND"}]},{},["7QCb"], null)
 
 
-/* Automatically built on 2019-08-08 19:36:45 */
+/* Automatically built on 2019-09-12 21:21:46 */
 
