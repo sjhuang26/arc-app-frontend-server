@@ -167,6 +167,10 @@ function failAfterFiveSeconds(p) {
 
 function convertServerStringToAskFinished(str) {
   try {
+    if (str === null) {
+      throw new Error("server response was NULL; try refreshing the page");
+    }
+
     if (typeof str !== "string") {
       throw new Error("server response not in correct type");
     } else {
@@ -288,46 +292,122 @@ var AskStatus;
   AskStatus["LOADING"] = "LOADING";
   AskStatus["LOADED"] = "LOADED";
   AskStatus["ERROR"] = "ERROR";
-})(AskStatus = exports.AskStatus || (exports.AskStatus = {})); // The point of the mock server is for demos, where we don't want to link to the real spreadsheet with the real data.
+})(AskStatus = exports.AskStatus || (exports.AskStatus = {}));
 
+function realServer(args) {
+  return __awaiter(this, void 0, void 0, function* () {
+    function getGoogleAppsScriptEndpoint() {
+      if (window["google"] === undefined || window["google"].script === undefined) {
+        // This will be displayed to the user
+        throw "You should turn on testing mode. Click OTHER >> TESTING MODE.";
+      }
+
+      return window["google"].script.run;
+    }
+
+    let result = "Mysterious error";
+
+    try {
+      result = yield new Promise((res, rej) => {
+        getGoogleAppsScriptEndpoint().withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
+      }); // NOTE: an "error: true" response is still received by the client through withSuccessHandler().
+    } catch (err) {
+      result = JSON.stringify({
+        error: true,
+        val: null,
+        message: shared_1.stringifyError(err)
+      });
+    }
+
+    if (typeof result !== "string") {
+      result = JSON.stringify({
+        error: true,
+        val: null,
+        message: shared_1.stringifyError("not a string: " + String(result))
+      });
+    }
+
+    return result;
+  });
+}
+
+function mockServer(args) {
+  return __awaiter(this, void 0, void 0, function* () {
+    let rawResult = "Mysterious error"; // only for resources so far
+
+    try {
+      const mockArgs = JSON.parse(JSON.stringify(args));
+
+      if (args[0] === "command") {
+        if (args[1] === "syncDataFromForms") {
+          throw new Error("command syncDataFromForms is not supported on the testing server");
+        } else if (args[1] === "recalculateAttendance") {
+          throw new Error("command recalculateAttendance is not supported on the testing server");
+        } else if (args[1] === "generateSchedule") {
+          throw new Error("command generateSchedule is not supported on the testing server");
+        } else if (args[1] === "retrieveMultiple") {
+          const resourceNames = args[2];
+          rawResult = {};
+
+          for (const resourceName of resourceNames) {
+            rawResult[resourceName] = exports.mockResourceServerEndpoints[resourceName].contents;
+          }
+        } else {
+          throw new Error(`command [unknown] is not supported on the testing server ${JSON.stringify({
+            args
+          })}`);
+        }
+      } else {
+        rawResult = yield exports.mockResourceServerEndpoints[mockArgs[0]].processClientAsk(mockArgs.slice(1));
+      }
+
+      return JSON.stringify(mockSuccess(rawResult));
+    } catch (err) {
+      rawResult = shared_1.stringifyError(err);
+    }
+
+    return JSON.stringify(mockError(rawResult));
+  });
+} // The point of the mock server is for demos, where we don't want to link to the real spreadsheet with the real data.
+
+
+function mockSuccess(val) {
+  return {
+    error: false,
+    message: null,
+    val
+  };
+}
+
+function mockError(message) {
+  return {
+    error: true,
+    message,
+    val: null
+  };
+}
 
 class MockResourceServerEndpoint {
   constructor(resource, contents) {
     // IMPORTANT: the resource field is ":() => Resource" intentionally.
     // The general rule is that exported variables from another module
     // aren't available until runtime.
-    this.nextKey = 1000; // default ID is very high for testing purposes
+    this.nextKey = 1000; // default ID is an arbitrary high number for testing purposes
     // Making it ":Resource" directly, results in an error.
 
     this.resource = resource;
     this.contents = contents;
   }
 
-  success(val) {
-    return {
-      error: false,
-      message: null,
-      val
-    };
-  }
-
-  error(message) {
-    return {
-      error: true,
-      message,
-      val: null
-    };
-  }
-
   processClientAsk(args) {
     if (args[0] === "retrieveAll") {
-      return this.success(this.contents);
+      return this.contents;
     }
 
     if (args[0] === "update") {
       this.contents[String(args[1].id)] = args[1];
       onClientNotification(["update", this.resource().name, args[1]]);
-      return this.success(null);
+      return null;
     }
 
     if (args[0] === "create") {
@@ -342,30 +422,16 @@ class MockResourceServerEndpoint {
 
       this.contents[String(args[1].id)] = args[1];
       onClientNotification(["create", this.resource().name, args[1]]);
-      return this.success(this.contents[String(args[1].id)]);
+      return this.contents[String(args[1].id)];
     }
 
     if (args[0] === "delete") {
       delete this.contents[String(args[1])];
       onClientNotification(["delete", this.resource().name, args[1]]);
-      return this.success(null);
+      return null;
     }
 
     throw new Error("args not matched");
-  }
-
-  replyToClientAsk(args) {
-    return __awaiter(this, void 0, void 0, function* () {
-      return new Promise((res, rej) => {
-        setTimeout(() => {
-          try {
-            res(this.processClientAsk(args));
-          } catch (v) {
-            rej(v);
-          }
-        }, 100); // fake a small delay
-      });
-    });
   }
 
 } // You can edit this to add fake demo data, if you want.
@@ -475,87 +541,6 @@ exports.mockResourceServerEndpoints = {
     }
   })
 };
-
-function realServer(args) {
-  return __awaiter(this, void 0, void 0, function* () {
-    function getGoogleAppsScriptEndpoint() {
-      if (window["google"] === undefined || window["google"].script === undefined) {
-        // This will be displayed to the user
-        throw "You should turn on testing mode. Click OTHER >> TESTING MODE.";
-      }
-
-      return window["google"].script.run;
-    }
-
-    let result = "Mysterious error";
-
-    try {
-      result = yield new Promise((res, rej) => {
-        getGoogleAppsScriptEndpoint().withFailureHandler(rej).withSuccessHandler(res).onClientAsk(args);
-      }); // NOTE: an "error: true" response is still received by the client through withSuccessHandler().
-    } catch (err) {
-      result = JSON.stringify({
-        error: true,
-        val: null,
-        message: shared_1.stringifyError(err)
-      });
-    }
-
-    if (typeof result !== "string") {
-      result = JSON.stringify({
-        error: true,
-        val: null,
-        message: shared_1.stringifyError("not a string: " + String(result))
-      });
-    }
-
-    return result;
-  });
-}
-
-function mockServer(args) {
-  return __awaiter(this, void 0, void 0, function* () {
-    let result = "Mysterious error"; // only for resources so far
-
-    try {
-      const mockArgs = JSON.parse(JSON.stringify(args));
-
-      if (args[0] === "command") {
-        if (args[1] === "syncDataFromForms") {
-          throw new Error("command syncDataFromForms is not supported on the testing server");
-        }
-
-        if (args[1] === "recalculateAttendance") {
-          throw new Error("command recalculateAttendance is not supported on the testing server");
-        }
-
-        if (args[1] === "generateSchedule") {
-          throw new Error("command generateSchedule is not supported on the testing server");
-        }
-
-        throw new Error("command [unknown] is not supported on the testing server");
-      }
-
-      result = JSON.stringify((yield exports.mockResourceServerEndpoints[mockArgs[0]].replyToClientAsk(mockArgs.slice(1))));
-    } catch (err) {
-      result = JSON.stringify({
-        error: true,
-        val: null,
-        message: shared_1.stringifyError(err)
-      });
-    }
-
-    if (typeof result !== "string") {
-      result = JSON.stringify({
-        error: true,
-        val: null,
-        message: shared_1.stringifyError("not a string: " + String(result))
-      });
-    }
-
-    return result;
-  });
-}
 },{"./shared":"m0/6"}],"IhYu":[function(require,module,exports) {
 "use strict";
 
@@ -573,7 +558,7 @@ function FormWidget(fields) {
     name,
     info
   }) => {
-    const widget = type();
+    const widget = type.makeWidget();
     widgets[name] = widget;
     return shared_1.container('<div class="form-group row"></div>')(shared_1.container('<label class="col-5 col-form-label"></label>')(shared_1.container("<b></b>")(title), info && shared_1.container('<i class="ml-2"></i>')(info)), shared_1.container('<div class="col-7"></div>')(widget.dom));
   }));
@@ -679,9 +664,15 @@ function ButtonWidget(content, onClick, variant = "primary") {
   if (variant === "outline") variant = "outline-primary";
 
   if (typeof content === "string") {
-    return shared_1.DomWidget($("<button></button>").text(content).addClass("btn btn-" + variant).click(onClick));
+    return shared_1.DomWidget($("<button></button>").text(content).addClass("btn btn-" + variant).click(e => {
+      e.preventDefault();
+      onClick();
+    }));
   } else {
-    return shared_1.DomWidget($("<button></button>").append(content).addClass("btn btn-" + variant).click(onClick));
+    return shared_1.DomWidget($("<button></button>").append(content).addClass("btn btn-" + variant).click(e => {
+      e.preventDefault();
+      onClick();
+    }));
   }
 }
 
@@ -706,9 +697,17 @@ const modalHtmlString = `<div class="modal" tabindex="-1" role="dialog">
 function showModal(title, content, buildButtons, preventBackgroundClose) {
   const dom = $(modalHtmlString);
   dom.find(".modal-title").text(title);
-  dom.find(".modal-body").append(typeof content === "string" ? shared_1.container("<p></p>")(content) : content); // https://stackoverflow.com/questions/10466129/how-to-hide-bootstrap-modal-with-javascript
+  dom.find(".modal-body").append(typeof content === "string" ? shared_1.container("<p></p>")(content) : content);
 
-  const closeModal = () => dom.modal("hide");
+  const closeModal = () => {
+    dom.modal("hide");
+    dom.modal("dispose");
+    dom.remove(); // https://stackoverflow.com/questions/28077066/bootstrap-modal-issue-scrolling-gets-disabled
+
+    if ($(".modal.show").length > 0) {
+      $("body").addClass("modal-open");
+    }
+  };
 
   const buildButtonsParameterFunction = (text, style, onClick, preventAutoClose) => $('<button type="button" class="btn">').addClass("btn-" + style).click(() => {
     if (onClick) {
@@ -731,7 +730,16 @@ function showModal(title, content, buildButtons, preventBackgroundClose) {
 
   dom.modal(settings);
   const modifiedPromise = new Promise(res => {
-    dom.on("hidden.bs.modal", () => res());
+    dom.on("hidden.bs.modal", () => {
+      dom.modal("dispose");
+      dom.remove();
+
+      if ($(".modal.show").length > 0) {
+        $("body").addClass("modal-open");
+      }
+
+      res();
+    });
   });
   modifiedPromise.closeModal = closeModal;
   return modifiedPromise;
@@ -752,8 +760,12 @@ function FormStringInputWidget(type) {
       return dom.val(newVal);
     },
 
-    onChange(doThis) {
-      dom.change(() => doThis.call(null, dom.val()));
+    onChange(doThis, useInputEvent) {
+      if (useInputEvent) {
+        dom.on("input", () => doThis.call(null, dom.val()));
+      } else {
+        dom.change(() => doThis.call(null, dom.val()));
+      }
     }
 
   };
@@ -819,11 +831,6 @@ function FormNumberInputWidget(type) {
     dom = $(`<input class="form-control" type="datetime-local">`);
   }
 
-  if (type === "id") {
-    // TODO: create a resource selection dropdown, or at least a name search
-    dom = $(`<input class="form-control" type="number">`);
-  }
-
   function getVal() {
     if (type == "datetime-local") {
       // a hack to get around Typescript types
@@ -862,6 +869,69 @@ function FormNumberInputWidget(type) {
 
 exports.FormNumberInputWidget = FormNumberInputWidget;
 
+function FormBooleanInputWidget() {
+  const input = $(`<input type="checkbox">`);
+  const dom = shared_1.container('<div class="form-check">')(input);
+  return {
+    dom,
+
+    getValue() {
+      return input.prop("checked");
+    },
+
+    setValue(val) {
+      input.prop("checked", Boolean(val));
+      return dom;
+    },
+
+    onChange(doThis) {
+      dom.change(doThis.call(null, input.prop("checked")));
+    }
+
+  };
+}
+
+exports.FormBooleanInputWidget = FormBooleanInputWidget;
+
+function FormIdInputWidget(resource, isOptional) {
+  const input = $(`<input class="form-control" type="number">`);
+  const dom = shared_1.container("<div>")(input, resource === undefined ? undefined : ButtonWidget("Change", () => {
+    const {
+      closeModal
+    } = showModal("Edit ID", shared_1.getResourceByName(resource).makeSearchWidget("Pick", id => {
+      input.val(id);
+      closeModal();
+    }).dom, bb => isOptional ? [bb("Set to blank ID (-1)", "secondary", () => input.val(-1)), bb("Close", "primary")] : [bb("Close", "primary")]);
+  }).dom, resource === undefined ? undefined : ButtonWidget("View", () => {
+    if (getVal() !== -1) {
+      shared_1.getResourceByName(resource).makeTiledEditWindow(getVal());
+    }
+  }).dom);
+
+  function getVal() {
+    return Number(input.val());
+  }
+
+  return {
+    dom,
+
+    getValue() {
+      return getVal();
+    },
+
+    setValue(val) {
+      return input.val(val);
+    },
+
+    onChange(doThis) {
+      input.change(doThis.call(null, getVal()));
+    }
+
+  };
+}
+
+exports.FormIdInputWidget = FormIdInputWidget;
+
 function FormNumberArrayInputWidget(type) {
   let dom = null;
 
@@ -896,47 +966,143 @@ function FormNumberArrayInputWidget(type) {
 
 exports.FormNumberArrayInputWidget = FormNumberArrayInputWidget;
 
-function StringField(type) {
-  return () => FormStringInputWidget(type);
+function StringField(type, optional) {
+  // () => FormStringInputWidget(type),
+  return {
+    makeWidget: () => FormStringInputWidget(type),
+
+    validator(val) {
+      if (typeof val !== "string") {
+        return "field should be text/string, but isn't";
+      }
+
+      if (!(optional === "optional")) {
+        if (val === "") {
+          return "field shouldn't be blank";
+        }
+
+        if (val.trim() === "") {
+          return "field shouldn't be blank (there is only whitespace)";
+        }
+      }
+
+      return true;
+    }
+
+  };
 }
 
 exports.StringField = StringField;
 
-function NumberField(type) {
-  return () => FormNumberInputWidget(type);
+function NumberField(type, optional) {
+  return {
+    makeWidget: () => FormNumberInputWidget(type),
+
+    validator(val) {
+      if (type === "number" || type === "datetime-local") {
+        if (typeof val !== "number") {
+          return "field isn't a number";
+        } // TODO support optionals, which will require null support for numbers
+
+
+        return true;
+      }
+
+      return true;
+    }
+
+  };
 }
 
 exports.NumberField = NumberField;
 
-function IdField() {
-  return () => FormNumberInputWidget("number");
+function BooleanField() {
+  return {
+    makeWidget: () => FormBooleanInputWidget(),
+
+    validator(val) {
+      if (typeof val !== "boolean") return "not a true/false value";
+      return true;
+    }
+
+  };
+}
+
+exports.BooleanField = BooleanField;
+
+function IdField(resource, optional) {
+  return {
+    makeWidget: () => FormIdInputWidget(resource, optional === "optional"),
+
+    validator(val) {
+      if (typeof val !== "number") return "ID isn't a number";
+      if (resource === undefined || optional === "optional" && val === -1) return true;
+      return {
+        resource,
+        id: val
+      };
+    },
+
+    isIdField: true
+  };
 }
 
 exports.IdField = IdField;
 
 function SelectField(options, optionTitles) {
-  return () => FormSelectWidget(options, optionTitles);
+  return {
+    makeWidget: () => FormSelectWidget(options, optionTitles),
+
+    validator(val) {
+      // TODO: proper select field validation
+      if (typeof val !== "string") {
+        return "field isn't text/string";
+      } // select fields are never optional
+
+
+      if (val === "") {
+        return "field is blank";
+      }
+
+      if (val.trim() === "") {
+        return "field is blank (only whitespace)";
+      }
+
+      return true;
+    }
+
+  };
 }
 
 exports.SelectField = SelectField;
 
 function NumberArrayField(type) {
-  return () => FormNumberArrayInputWidget(type);
+  return {
+    makeWidget: () => FormNumberArrayInputWidget(type),
+
+    validator(val) {
+      // TODO: proper number array field validation
+      return true;
+    }
+
+  };
 }
 
 exports.NumberArrayField = NumberArrayField;
 
 function JsonField(defaultValue) {
-  return () => FormJsonInputWidget(defaultValue);
+  return {
+    makeWidget: () => FormJsonInputWidget(defaultValue),
+
+    validator(val) {
+      // TODO: proper JSON field validation
+      return true;
+    }
+
+  };
 }
 
 exports.JsonField = JsonField;
-
-function FormSubmitWidget(text) {
-  return shared_1.DomWidget($('<button class="btn btn-outline-success type="submit"></button>').text(text));
-}
-
-exports.FormSubmitWidget = FormSubmitWidget;
 
 function FormSelectWidget(options, optionTitles) {
   const dom = shared_1.container('<select class="form-control"></select>')(options.map((_o, i) => shared_1.container("<option></option>")(optionTitles[i]).val(options[i])));
@@ -951,8 +1117,12 @@ function FormSelectWidget(options, optionTitles) {
       return dom.val(val);
     },
 
-    onChange(doThis) {
-      dom.change(() => doThis.call(null, dom.val()));
+    onChange(doThis, useInputEvent) {
+      if (useInputEvent) {
+        dom.on("input", () => doThis.call(null, dom.val()));
+      } else {
+        dom.change(() => doThis.call(null, dom.val()));
+      }
     }
 
   };
@@ -1010,15 +1180,6 @@ function FormToggleWidget(titleWhenFalse, titleWhenTrue, styleWhenFalse = "outli
 }
 
 exports.FormToggleWidget = FormToggleWidget;
-
-function SearchItemWidget(onSubmit) {
-  return shared_1.DomWidget($('<form class="form-inline"></form>').append(FormStringInputWidget("search").dom).append(FormSubmitWidget("Search").dom).submit(ev => {
-    ev.preventDefault();
-    onSubmit.call(null);
-  }));
-}
-
-exports.SearchItemWidget = SearchItemWidget;
 
 function createMarkerLink(text, onClick) {
   return $('<a style="cursor: pointer; text-decoration: underline"></a>').text(text).click(onClick);
@@ -1299,15 +1460,6 @@ class ResourceObservable extends ObservableState {
     this.endpoint = endpoint;
   }
 
-  initialize() {
-    return __awaiter(this, void 0, void 0, function* () {
-      // If this fails, there will be some cascading failure throughout the app, but only when the resource is actually used. This prevents catastrophic failure the moment a resource fails.
-      const newVal = yield this.endpoint.retrieveAll();
-      this.changeTo(newVal);
-      return newVal;
-    });
-  }
-
   getRecordOrFail(id) {
     const val = this.getLoadedOrFail();
 
@@ -1334,13 +1486,6 @@ class ResourceObservable extends ObservableState {
     }
 
     return this.val.val;
-  }
-
-  forceRefresh() {
-    return __awaiter(this, void 0, void 0, function* () {
-      const newVal = yield this.endpoint.retrieveAll();
-      this.changeTo(newVal);
-    });
   }
 
   getRecordCollectionOrFail() {
@@ -1488,51 +1633,77 @@ class Resource {
   }
 
   makeTiledCreateWindow() {
-    return __awaiter(this, void 0, void 0, function* () {
-      let errorMessage = "";
+    let errorMessage = "";
 
-      try {
-        yield this.state.getRecordCollectionOrFail();
-        const windowLabel = "Create new " + this.info.title;
-        const form = this.makeFormWidget();
-        form.setAllValues({
-          id: -1,
-          date: Date.now()
-        });
-        ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), form.dom), bb => [bb("Create", "primary", () => __awaiter(this, void 0, void 0, function* () {
-          try {
-            server_1.getResultOrFail((yield this.state.createRecord(form.getAllValues())));
-          } catch (err) {
-            alertError(err);
-          }
-        })), bb("Cancel", "secondary")]);
-      } catch (err) {
-        const windowLabel = "ERROR in: create new " + this.info.title;
-        errorMessage = stringifyError(err);
-        ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
+    try {
+      this.state.getRecordCollectionOrFail();
+      const windowLabel = "Create new " + this.info.title;
+      const form = this.makeFormWidget();
+      form.setAllValues({
+        id: -1,
+        date: Date.now()
+      });
+      ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), form.dom), bb => [bb("Create", "primary", () => __awaiter(this, void 0, void 0, function* () {
+        try {
+          server_1.getResultOrFail((yield this.state.createRecord(form.getAllValues())));
+        } catch (err) {
+          alertError(err);
+        }
+      })), bb("Cancel", "secondary")]);
+    } catch (err) {
+      const windowLabel = "ERROR in: create new " + this.info.title;
+      errorMessage = stringifyError(err);
+      ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
+    }
+  }
+
+  makeSearchWidget(actionText, action) {
+    const info = this.info;
+
+    function doSearch() {
+      if (searchWidget.getValue().trim() === "") {
+        table.setAllValues(Object.keys(recordCollection).map(x => Number(x)));
+        return;
       }
-    });
+
+      const options = {
+        id: ["id"],
+        shouldSort: true,
+        threshold: 0.6,
+        location: 0,
+        distance: 100,
+        maxPatternLength: 32,
+        minMatchCharLength: 1,
+        keys: ["searchableContent"]
+      };
+      const fuse = new window["Fuse"](Object.values(recordCollection).map(record => ({
+        id: record.id,
+        searchableContent: info.makeSearchableContent(record).join(" ")
+      })), options);
+      const results = fuse.search(searchWidget.getValue());
+      console.log(results);
+      table.setAllValues(results.map(x => Number(x)));
+    }
+
+    const recordCollection = this.state.getRecordCollectionOrFail();
+    const table = Table_1.TableWidget(this.info.tableFieldTitles.concat(actionText), id => this.info.makeTableRowContent(recordCollection[id]).concat(ui_1.ButtonWidget(actionText, () => action(id)).dom));
+    const searchWidget = ui_1.FormStringInputWidget("string");
+    searchWidget.onChange(() => doSearch(), true);
+    doSearch();
+    return DomWidget(container("<div>")(searchWidget.dom.attr("placeholder", "Search..."), table.dom));
   }
 
   makeTiledViewAllWindow() {
-    return __awaiter(this, void 0, void 0, function* () {
-      let recordCollection = null;
-      let errorMessage = "";
+    let errorMessage = "";
 
-      try {
-        recordCollection = yield this.state.getRecordCollectionOrFail();
-        const table = Table_1.TableWidget(this.info.tableFieldTitles.concat("View & edit"), record => this.info.makeTableRowContent(record).concat(ui_1.ButtonWidget("View & edit", () => {
-          this.makeTiledEditWindow(record.id);
-        }).dom));
-        table.setAllValues(recordCollection);
-        const windowLabel = "View all " + this.info.pluralTitle;
-        ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), table.dom), bb => [bb("Create", "secondary", () => this.makeTiledCreateWindow(), true), bb("Close", "primary")]);
-      } catch (err) {
-        errorMessage = stringifyError(err);
-        const windowLabel = "ERROR in: view all " + this.info.pluralTitle;
-        ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
-      }
-    });
+    try {
+      const windowLabel = "View all " + this.info.pluralTitle;
+      ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), this.makeSearchWidget("Edit", id => this.makeTiledEditWindow(id)).dom), bb => [bb("Create", "secondary", () => this.makeTiledCreateWindow(), true), bb("Close", "primary")]);
+    } catch (err) {
+      errorMessage = stringifyError(err);
+      const windowLabel = "ERROR in: view all " + this.info.pluralTitle;
+      ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
+    }
   }
 
   makeTiledDeleteWindow(id, closeParentWindow) {
@@ -1636,7 +1807,7 @@ function showWindow(windowKey) {
 exports.showWindow = showWindow;
 
 function processResourceInfo(conf) {
-  conf.fields.push(["id", ui_1.NumberField("number")], ["date", ui_1.NumberField("datetime-local")]);
+  conf.fields.push(["id", ui_1.IdField()], ["date", ui_1.NumberField("number")]);
   let fields = [];
 
   for (const [name, type] of conf.fields) {
@@ -1654,6 +1825,7 @@ function processResourceInfo(conf) {
   return {
     fields,
     makeTableRowContent: conf.makeTableRowContent,
+    makeSearchableContent: conf.makeSearchableContent,
     title: conf.title,
     pluralTitle: conf.pluralTitle,
     tableFieldTitles: conf.tableFieldTitles,
@@ -1664,7 +1836,7 @@ function processResourceInfo(conf) {
 exports.processResourceInfo = processResourceInfo;
 
 function makeBasicStudentConfig() {
-  return [["firstName", ui_1.StringField("text")], ["lastName", ui_1.StringField("text")], ["friendlyName", ui_1.StringField("text")], ["friendlyFullName", ui_1.StringField("text")], ["grade", ui_1.NumberField("number")], ["studentId", ui_1.NumberField("number")], ["email", ui_1.StringField("email")], ["phone", ui_1.StringField("string")], ["contactPref", ui_1.SelectField(["email", "phone", "either"], ["Email", "Phone", "Either"])], ["homeroom", ui_1.StringField("text")], ["homeroomTeacher", ui_1.StringField("text")], ["attendanceAnnotation", ui_1.StringField("text")]];
+  return [["firstName", ui_1.StringField("text")], ["lastName", ui_1.StringField("text")], ["friendlyName", ui_1.StringField("text")], ["friendlyFullName", ui_1.StringField("text")], ["grade", ui_1.NumberField("number")], ["studentId", ui_1.NumberField("number")], ["email", ui_1.StringField("email", "optional")], ["phone", ui_1.StringField("text", "optional")], ["contactPref", ui_1.SelectField(["email", "phone", "either"], ["Email", "Phone", "Either"])], ["homeroom", ui_1.StringField("text", "optional")], ["homeroomTeacher", ui_1.StringField("text", "optional")], ["attendanceAnnotation", ui_1.StringField("text", "optional")]];
 }
 
 exports.makeBasicStudentConfig = makeBasicStudentConfig; // This maps field names to the words that show up in the UI.
@@ -1675,8 +1847,8 @@ const fieldNameMap = {
   friendlyName: "Friendly name",
   friendlyFullName: "Friendly full name",
   grade: ["Grade", "A number from 9-12"],
-  learner: ["Learner", "This is an ID. You usually will not need to edit this by hand."],
-  tutor: ["Tutor", "This is an ID. You usually will not need to edit this by hand."],
+  learner: "Learner",
+  tutor: "Tutor",
   attendance: ["Attendance data", "Do not edit this by hand."],
   status: "Status",
   mods: ["Mods", "A comma-separated list of numbers from 1-20, corresponding to 1A-10B"],
@@ -1691,15 +1863,17 @@ const fieldNameMap = {
   phone: "Phone",
   contactPref: "Contact preference",
   specialRoom: ["Special tutoring room", `Leave blank if the student isn't in special tutoring`],
-  id: ["ID", `Do not modify unless you really know what you're doing!`],
-  date: ["Date", "Date of creation -- do not change"],
+  id: "ID",
+  date: ["Date", "Date of creation (do not change)"],
   homeroom: "Homeroom",
   homeroomTeacher: "Homeroom teacher",
   step: ["Step", "A number 1-4."],
-  chosenBooking: ["Chosen booking", "The ID of the booking that was chosen"],
   afterSchoolAvailability: "After-school availability",
   attendanceAnnotation: "Attendance annotation",
-  additionalHours: ["Additional hours", "Additional time added to the hours count"]
+  additionalHours: ["Additional hours", "Additional time added to the hours count"],
+  isSpecial: "Is special request?",
+  annotation: "Annotation",
+  chosenBookings: "Chosen bookings"
 };
 /*
 
@@ -1708,10 +1882,11 @@ DECLARE INFO FOR EACH RESOURCE
 */
 
 const tutorsInfo = {
-  fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["modsPref", ui_1.NumberArrayField("number")], ["subjectList", ui_1.StringField("text")], ["attendance", ui_1.JsonField({})], ["dropInMods", ui_1.NumberArrayField("number")], ["afterSchoolAvailability", ui_1.StringField("text")], ["additionalHours", ui_1.StringField("text")]],
+  fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["modsPref", ui_1.NumberArrayField("number")], ["subjectList", ui_1.StringField("text")], ["attendance", ui_1.JsonField({})], ["dropInMods", ui_1.NumberArrayField("number")], ["afterSchoolAvailability", ui_1.StringField("text", "optional")], ["additionalHours", ui_1.NumberField("number", "optional")]],
   fieldNameMap,
   tableFieldTitles: ["Name", "Grade", "Mods", "Subjects"],
   makeTableRowContent: record => [exports.tutors.createDataEditorMarker(record.id, x => x.friendlyFullName), record.grade, generateStringOfMods(record.mods, record.modsPref), record.subjectList],
+  makeSearchableContent: record => [exports.tutors.createLabel(record.id, x => x.friendlyFullName), String(record.grade), generateStringOfMods(record.mods, record.modsPref), record.subjectList],
   title: "tutor",
   pluralTitle: "tutors",
   makeLabel: record => record.friendlyFullName
@@ -1721,42 +1896,48 @@ const learnersInfo = {
   fieldNameMap,
   tableFieldTitles: ["Name", "Grade"],
   makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.id, x => x.friendlyFullName), record.grade],
+  makeSearchableContent: record => [exports.learners.createLabel(record.id, x => x.friendlyFullName), record.grade],
   title: "learner",
   pluralTitle: "learners",
   makeLabel: record => record.friendlyFullName
 };
 const requestsInfo = {
-  fields: [["learner", ui_1.NumberField("id")], ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["specialRoom", ui_1.StringField("text")], ["step", ui_1.NumberField("number")], ["chosenBooking", ui_1.NumberField("id")]],
+  fields: [["learner", ui_1.IdField("learners")], ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["isSpecial", ui_1.BooleanField()], ["annotation", ui_1.StringField("text", "optional")], ["step", ui_1.NumberField("number")], ["chosenBookings", ui_1.NumberArrayField("number")] // TODO: this is a reference to an array of IDs
+  ],
   fieldNameMap,
   tableFieldTitles: ["Learner", "Subject", "Mods"],
   makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
+  makeSearchableContent: record => [exports.learners.createFriendlyMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
   title: "request",
   pluralTitle: "requests",
   makeLabel: record => exports.learners.createLabel(record.learner, x => x.friendlyFullName)
 };
 const bookingsInfo = {
-  fields: [["request", ui_1.NumberField("id")], ["tutor", ui_1.NumberField("id")], ["mod", ui_1.NumberField("number")], ["status", ui_1.SelectField(["ignore", "unsent", "waitingForTutor", "rejected"], ["Ignore", "Unsent", "Waiting", "Rejected"])]],
+  fields: [["request", ui_1.IdField("requests")], ["tutor", ui_1.IdField("tutors")], ["mod", ui_1.NumberField("number")], ["status", ui_1.SelectField(["ignore", "unsent", "waitingForTutor", "selected", "rejected"], ["Ignore", "Unsent", "Waiting", "Selected", "Rejected"])]],
   fieldNameMap,
   tableFieldTitles: ["Learner", "Tutor", "Mod", "Status"],
   makeTableRowContent: record => [exports.learners.createDataEditorMarker(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.status],
+  makeSearchableContent: record => [exports.learners.createLabel(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createLabel(record.tutor, x => x.friendlyFullName), record.mod, record.status],
   title: "booking",
   pluralTitle: "bookings",
   makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + exports.learners.state.getRecordOrFail(exports.requests.state.getRecordOrFail(record.request).learner).friendlyFullName
 };
 const matchingsInfo = {
-  fields: [["learner", ui_1.StringField("text")], ["tutor", ui_1.StringField("text")], ["subject", ui_1.StringField("text")], ["mod", ui_1.NumberField("number")], ["specialRoom", ui_1.StringField("text")]],
+  fields: [["learner", ui_1.IdField("learners")], ["tutor", ui_1.IdField("tutors")], ["subject", ui_1.StringField("text")], ["mod", ui_1.NumberField("number")], ["annotation", ui_1.StringField("text", "optional")]],
   fieldNameMap,
   tableFieldTitles: ["Learner", "Tutor", "Mod", "Subject", "Status"],
-  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject, record.status],
+  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject],
+  makeSearchableContent: record => [exports.learners.createLabel(record.learner, x => x.friendlyFullName), exports.tutors.createLabel(record.tutor, x => x.friendlyFullName), record.mod, record.subject],
   title: "matching",
   pluralTitle: "matchings",
   makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + exports.learners.state.getRecordOrFail(record.learner).friendlyFullName
 };
 const requestSubmissionsInfo = {
-  fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["specialRoom", ui_1.StringField("text")], ["status", ui_1.SelectField(["unchecked", "checked"], ["Unchecked", "Checked"])]],
+  fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["isSpecial", ui_1.BooleanField()], ["annotation", ui_1.StringField("text", "optional")]],
   fieldNameMap,
   tableFieldTitles: ["Name", "Mods", "Subject"],
   makeTableRowContent: record => [record.friendlyFullName, record.mods.join(", "), record.subject],
+  makeSearchableContent: record => [record.friendlyFullName, record.mods.join(", "), record.subject],
   title: "request submission",
   pluralTitle: "request submissions",
   makeLabel: record => record.friendlyFullName
@@ -1773,34 +1954,234 @@ exports.requests = new Resource("requests", processResourceInfo(requestsInfo));
 exports.bookings = new Resource("bookings", processResourceInfo(bookingsInfo));
 exports.matchings = new Resource("matchings", processResourceInfo(matchingsInfo));
 exports.requestSubmissions = new Resource("requestSubmissions", processResourceInfo(requestSubmissionsInfo));
-
-function initializeResources() {
-  return __awaiter(this, void 0, void 0, function* () {
-    yield exports.tutors.state.initialize();
-    yield exports.learners.state.initialize();
-    yield exports.bookings.state.initialize();
-    yield exports.matchings.state.initialize();
-    yield exports.requests.state.initialize();
-    yield exports.requestSubmissions.state.initialize();
-  });
-}
-
-exports.initializeResources = initializeResources;
-/*
-
-VERY USEFUL FOR DEBUG
-
-*/
-
-window["appDebug"] = () => ({
+exports.resources = {
   tutors: exports.tutors,
   learners: exports.learners,
   bookings: exports.bookings,
   matchings: exports.matchings,
   requests: exports.requests,
   requestSubmissions: exports.requestSubmissions
+};
+
+function getResourceByName(name) {
+  if (exports.resources[name] === undefined) {
+    throw new Error("getResourceByName: " + JSON.stringify({
+      name
+    }));
+  }
+
+  return exports.resources[name];
+}
+
+exports.getResourceByName = getResourceByName;
+
+function forceRefreshAllResources() {
+  return __awaiter(this, void 0, void 0, function* () {
+    const result = yield server_1.askServer(["command", "retrieveMultiple", Object.keys(exports.resources)]);
+
+    for (const resource of Object.values(exports.resources)) {
+      if (result.status === server_1.AskStatus.ERROR) {
+        resource.state.changeTo(result);
+      } else {
+        resource.state.changeTo({
+          status: server_1.AskStatus.LOADED,
+          val: result.val[resource.name]
+        });
+      }
+    }
+  });
+}
+
+exports.forceRefreshAllResources = forceRefreshAllResources;
+/*
+
+VERY USEFUL FOR DEBUG
+
+*/
+
+window["appDebug"] = () => exports.resources;
+},{"./server":"ZgGC","../widgets/Form":"IhYu","../widgets/ui":"T2q6","../widgets/Table":"Jwlf"}],"Nbnk":[function(require,module,exports) {
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
 });
-},{"./server":"ZgGC","../widgets/Form":"IhYu","../widgets/ui":"T2q6","../widgets/Table":"Jwlf"}],"o4ND":[function(require,module,exports) {
+
+const shared_1 = require("./shared"); // Checks if everything in A is containd in B.
+
+
+function dataCheckerUtilCheckSubset(a, b) {
+  const bSet = new Set(b);
+
+  for (const av of a) {
+    if (!bSet.has(av)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function runDataCheckerSpecialCheck(tutorRecords, matchingRecords) {
+  let numValidFields = 0;
+  const problems = [];
+  const ind = {};
+
+  for (const tutor of Object.values(tutorRecords)) {
+    ind[tutor.id] = [];
+  }
+
+  for (const matching of Object.values(matchingRecords)) {
+    ind[matching.tutor].push(matching);
+  }
+
+  for (const tutor of Object.values(tutorRecords)) {
+    const mods = tutor.mods;
+    const dropInMods = tutor.dropInMods;
+    const modsPref = tutor.modsPref;
+    const matchedMods = ind[tutor.id].map(matching => matching.mod); // is dropInMods a subset of mods?
+
+    if (dataCheckerUtilCheckSubset(dropInMods, mods)) {
+      ++numValidFields;
+    } else {
+      problems.push({
+        text: "tutor's dropInMods are not a subset of tutor's mods",
+        tags: [{
+          resource: "tutors",
+          id: tutor.id,
+          field: "dropInMods",
+          value: String(dropInMods),
+          type: typeof dropInMods
+        }, {
+          resource: "tutors",
+          id: tutor.id,
+          field: "mods",
+          value: String(mods),
+          type: typeof mods
+        }]
+      });
+    } // is modsPref a subset of mods?
+
+
+    if (dataCheckerUtilCheckSubset(modsPref, mods)) {
+      ++numValidFields;
+    } else {
+      problems.push({
+        text: "tutor's modsPref are not a subset of tutor's mods",
+        tags: [{
+          resource: "tutors",
+          id: tutor.id,
+          field: "modsPref",
+          value: String(modsPref),
+          type: typeof modsPref
+        }, {
+          resource: "tutors",
+          id: tutor.id,
+          field: "mods",
+          value: String(mods),
+          type: typeof mods
+        }]
+      });
+    } // is matchedMods a subset of mods?
+
+
+    if (dataCheckerUtilCheckSubset(matchedMods, mods)) {
+      ++numValidFields;
+    } else {
+      problems.push({
+        text: "tutor has been matched to a mod that isn't one of tutor's mods",
+        tags: [{
+          resource: "tutors",
+          id: tutor.id,
+          text: "list of mods tutor has been matched to",
+          value: String(matchedMods),
+          type: typeof matchedMods
+        }, {
+          resource: "tutors",
+          id: tutor.id,
+          field: "mods",
+          value: String(mods),
+          type: typeof mods
+        }, ...ind[tutor.id].map(matching => ({
+          resource: "matchings",
+          id: matching.id
+        }))]
+      });
+    }
+  }
+
+  return {
+    numValidFields,
+    problems
+  };
+}
+
+function runDataChecker() {
+  let numValidFields = 0;
+  const problems = [];
+  const resourceList = {
+    learners: shared_1.learners,
+    bookings: shared_1.bookings,
+    matchings: shared_1.matchings,
+    requests: shared_1.requests,
+    tutors: shared_1.tutors,
+    requestSubmissions: shared_1.requestSubmissions
+  };
+
+  for (const [resourceName, resource] of Object.entries(resourceList)) {
+    const records = resource.state.getRecordCollectionOrFail();
+
+    for (const record of Object.values(records)) {
+      for (const field of resource.info.fields) {
+        const validationResult = field.type.validator(record[field.name]);
+
+        if (validationResult === true) {
+          ++numValidFields;
+        } else if (typeof validationResult === "string") {
+          problems.push({
+            text: validationResult,
+            tags: [{
+              resource: resourceName,
+              id: record.id,
+              field: field.name,
+              value: String(record[field.name]),
+              type: typeof record[field.name]
+            }]
+          });
+        } else {
+          // case: check IDs
+          const records2 = shared_1.getResourceByName(validationResult.resource).state.getRecordCollectionOrFail();
+
+          if (records2[record[field.name]] === undefined) {
+            // invalid ID
+            problems.push({
+              text: "invalid ID",
+              tags: [{
+                resource: resourceName,
+                id: record.id,
+                field: field.name,
+                value: String(record[field.name]),
+                type: typeof record[field.name]
+              }, {
+                resource: resourceName,
+                idResource: validationResult.resource
+              }]
+            });
+          }
+        }
+      }
+    }
+  }
+
+  const specialCheck = runDataCheckerSpecialCheck(shared_1.tutors.state.getRecordCollectionOrFail(), shared_1.matchings.state.getRecordCollectionOrFail());
+  return {
+    numValidFields: numValidFields + specialCheck.numValidFields,
+    problems: problems.concat(specialCheck.problems)
+  };
+}
+
+exports.runDataChecker = runDataChecker;
+},{"./shared":"m0/6"}],"o4ND":[function(require,module,exports) {
 "use strict";
 
 var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
@@ -1842,6 +2223,8 @@ const ui_1 = require("../widgets/ui");
 const Table_1 = require("../widgets/Table");
 
 const server_1 = require("./server");
+
+const datachecker_1 = require("./datachecker");
 /*
 
 BASIC UTILITIES
@@ -1884,7 +2267,6 @@ const navigationBarString = `
         <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">Handle requests</a>
             <a class="dropdown-item">Edit schedule</a>
-            <a class="dropdown-item">View schedule</a>
         </div>
     </li>
     <li class="nav-item">
@@ -1897,6 +2279,7 @@ const navigationBarString = `
         <a class="nav-link dropdown-toggle" data-toggle="dropdown">Other</a>
         <div class="dropdown-menu dropdown-menu-right">
             <a class="dropdown-item">About</a>
+            <a class="dropdown-item">Run datachecker</a>
             <a class="dropdown-item">Force refresh</a>
             <a class="dropdown-item">Testing mode</a>
         </div>
@@ -1921,6 +2304,12 @@ function showStep3Messager(bookingId) {
   const t = shared_1.tutors.state.getRecordOrFail(b.tutor);
   const l = shared_1.learners.state.getRecordOrFail(r.learner);
   const dom = $("<div></div>");
+
+  if (r.isSpecial === true) {
+    dom.append($('<strong><p class="lead">This is a special request. Consider the following information when writing your message.</p></strong>'));
+    dom.append(shared_1.container("<p>")(r.annotation));
+  }
+
   dom.append($("<p>Contact the tutor:</p>"));
   dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutoring ${l.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
   dom.append($("<p>Contact the learner:</p>"));
@@ -1974,17 +2363,21 @@ function requestChangeToStep4(requestId, onFinish) {
 
     try {
       const r = shared_1.requests.state.getRecordOrFail(requestId);
-      const b = shared_1.bookings.state.getRecordOrFail(r.chosenBooking); // ADD MATCHING
 
-      yield shared_1.matchings.state.createRecord({
-        learner: r.learner,
-        tutor: b.tutor,
-        subject: r.subject,
-        mod: b.mod,
-        specialRoom: r.specialRoom,
-        id: -1,
-        date: -1
-      }); // DELETE ALL BOOKINGS ASSOCIATED WITH REQUEST
+      for (const bookingId of r.chosenBookings) {
+        const b = shared_1.bookings.state.getRecordOrFail(bookingId); // ADD MATCHING
+
+        yield shared_1.matchings.state.createRecord({
+          learner: r.learner,
+          tutor: b.tutor,
+          subject: r.subject,
+          mod: b.mod,
+          specialRoom: r.specialRoom,
+          id: -1,
+          date: -1
+        });
+      } // DELETE ALL BOOKINGS ASSOCIATED WITH REQUEST
+
 
       for (const booking of Object.values(shared_1.bookings.state.getRecordCollectionOrFail())) {
         if (booking.request === r.id) {
@@ -1994,7 +2387,9 @@ function requestChangeToStep4(requestId, onFinish) {
 
 
       r.step = 4;
-      r.chosenBooking = -1;
+      r.chosenBookings = []; // NOTE: a matching is designed in the system to automatically take precedence over any of the drop-ins.
+      // The drop-in array for the tutor will still include the mod.
+
       yield shared_1.requests.state.updateRecord(r);
     } catch (err) {
       shared_1.alertError(err);
@@ -2009,7 +2404,7 @@ function requestChangeToStep3(requestId, onFinish) {
   return __awaiter(this, void 0, void 0, function* () {
     const {
       closeModal
-    } = ui_1.showModal("Saving...", "", bb => [], true);
+    } = ui_1.showModal("Saving...", "", () => [], true);
 
     try {
       const r = shared_1.requests.state.getRecordOrFail(requestId);
@@ -2024,18 +2419,21 @@ function requestChangeToStep3(requestId, onFinish) {
   });
 }
 
-function requestChangeToStep2(requestId, bookingId, onFinish) {
+function requestChangeToStep2(requestId, chosenBookings, onFinish) {
   return __awaiter(this, void 0, void 0, function* () {
-    if (yield isOperationConfirmedByUser("Are you sure you want to match these students?")) {
+    if (yield isOperationConfirmedByUser("Are you sure?")) {
+      if (chosenBookings.length === 0) {
+        ui_1.showModal("You haven't marked any bookings as selected.", "", bb => [bb("OK", "primary")]);
+        return false;
+      }
+
       const {
         closeModal
       } = ui_1.showModal("Saving...", "", bb => [], true);
 
       try {
-        const r = shared_1.requests.state.getRecordOrFail(requestId); // "choose" the booking
-
-        r.chosenBooking = bookingId; // go to step 2
-
+        const r = shared_1.requests.state.getRecordOrFail(requestId);
+        r.chosenBookings = chosenBookings;
         r.step = 2; // update record
 
         shared_1.requests.state.updateRecord(r);
@@ -2053,6 +2451,64 @@ function requestChangeToStep2(requestId, bookingId, onFinish) {
   });
 }
 
+function runDatacheckerNavigationScope(renavigate) {
+  function generateDatacheckerTag(tag) {
+    const subtags = [];
+
+    if (tag.resource !== undefined) {
+      subtags.push(shared_1.container("<span>")("Resource: ", tag.resource));
+    }
+
+    if (tag.id !== undefined) {
+      subtags.push(shared_1.container("<span>")("ID of item: ", shared_1.getResourceByName(tag.resource).createDataEditorMarker(tag.id, () => `Open (${tag.id})`)));
+    }
+
+    if (tag.idResource !== undefined) {
+      subtags.push(shared_1.container("<span>")("Resource that ID refers to: ", tag.idResource));
+    }
+
+    if (tag.text !== undefined) {
+      subtags.push(shared_1.container("<span>")("Item: ", tag.text));
+    }
+
+    if (tag.field !== undefined) {
+      subtags.push(shared_1.container("<span>")("Field: ", tag.field));
+    }
+
+    if (tag.value !== undefined) {
+      subtags.push(shared_1.container("<span>")("Value: ", tag.value));
+    }
+
+    if (tag.type !== undefined) {
+      subtags.push(shared_1.container("<span>")("Format of value: ", tag.type));
+    }
+
+    return shared_1.container('<ul class="list-group">')(subtags.map(subtag => shared_1.container('<li class="list-group-item">')(subtag)));
+  }
+
+  return {
+    generateMainContentPanel() {
+      const datacheckerResults = datachecker_1.runDataChecker();
+      const table = Table_1.TableWidget(["Text", "Details"], ({
+        problem,
+        index
+      }) => {
+        return [problem.text, ui_1.ButtonWidget("Details", () => {
+          const {
+            closeModal
+          } = ui_1.showModal(`Datachecker problem #${index + 1}`, shared_1.container("<div>")(shared_1.container('<p class="lead">')(problem.text), ...problem.tags.map(tag => generateDatacheckerTag(tag))), bb => [bb("OK", "primary", () => closeModal())]);
+        }).dom];
+      });
+      table.setAllValues(datacheckerResults.problems.map((problem, index) => ({
+        problem,
+        index
+      })));
+      return shared_1.container('<div class="overflow-auto">')($("<h1>Datachecker</h1>"), shared_1.container('<p class="lead">')(`${datacheckerResults.numValidFields} valid fields found`), shared_1.container('<p class="lead">')(`${datacheckerResults.problems.length} problems found`), table.dom);
+    }
+
+  };
+}
+
 function requestsNavigationScope(renavigate) {
   function stepToName(step) {
     if (step === 0) return "not started";
@@ -2063,12 +2519,12 @@ function requestsNavigationScope(renavigate) {
   } // MAJOR FUNCTIONS
 
 
-  function generatePotentialTable({
+  function generateEditBookingsTable({
     bookingsInfo,
     tutorIndex,
     request
   }) {
-    const potentialTable = Table_1.TableWidget(["Tutor", "Book for mods..."], ({
+    const table = Table_1.TableWidget(["Tutor", "Book for mods..."], ({
       tutorId,
       mods
     }) => {
@@ -2104,12 +2560,13 @@ function requestsNavigationScope(renavigate) {
 
       return [shared_1.tutors.createDataEditorMarker(tutorId, x => x.friendlyFullName), buttonsDom];
     });
-    const potentialTableValues = [];
+    const tableValues = [];
 
     for (const tutor of Object.values(tutorIndex)) {
       const modResults = [];
 
       for (const mod of request.mods) {
+        // ignore tutors who are already matched
         if (!tutor.matchedMods.includes(mod)) {
           const tutorRecord = shared_1.tutors.state.getRecordOrFail(tutor.id);
 
@@ -2125,62 +2582,69 @@ function requestsNavigationScope(renavigate) {
       }
 
       if (modResults.length > 0 && tutor.bookedMods.length === 0) {
-        potentialTableValues.push({
+        tableValues.push({
           tutorId: tutor.id,
           mods: modResults
         });
       }
     }
 
-    potentialTable.setAllValues(potentialTableValues);
-    return potentialTable.dom;
+    table.setAllValues(tableValues);
+    return table.dom;
   }
 
   function attemptRequestSubmissionConversion(record) {
     return __awaiter(this, void 0, void 0, function* () {
-      // CREATE LEARNER
-      // try to dig up a learner with matching student ID, which would mean
-      // that the learner already exists in the database
-      const matches = Object.values(learnerRecords).filter(x => x.studentId === record.studentId);
-      let learnerRecord;
+      let learnerId = -1;
 
-      if (matches.length > 1) {
-        // duplicate learner student IDs??
-        // this should be validated in the database
-        throw new Error(`duplicate student id: "${record.studentId}"`);
-      } else if (matches.length == 0) {
-        // create new learner
-        learnerRecord = server_1.getResultOrFail((yield shared_1.learners.state.createRecord({
-          firstName: record.firstName,
-          lastName: record.lastName,
-          friendlyName: record.friendlyName,
-          friendlyFullName: record.friendlyFullName,
-          grade: record.grade,
-          id: -1,
-          date: -1,
-          studentId: record.studentId,
-          email: record.email,
-          phone: record.phone,
-          contactPref: record.contactPref,
-          homeroom: record.homeroom,
-          homeroomTeacher: record.homeroomTeacher,
-          attendanceAnnotation: "",
-          attendance: {}
-        })));
+      if (record.isSpecial) {// special request; do nothing
       } else {
-        // learner already exists
-        learnerRecord = matches[0];
+        // CREATE LEARNER
+        // try to dig up a learner with matching student ID, which would mean
+        // that the learner already exists in the database
+        const matches = Object.values(learnerRecords).filter(x => x.studentId === record.studentId);
+
+        if (matches.length > 1) {
+          // duplicate learner student IDs??
+          // this should be validated in the database
+          throw new Error(`duplicate student id: "${record.studentId}"`);
+        } else if (matches.length == 0) {
+          // create new learner
+          const learnerRecord = server_1.getResultOrFail((yield shared_1.learners.state.createRecord({
+            firstName: record.firstName,
+            lastName: record.lastName,
+            friendlyName: record.friendlyName,
+            friendlyFullName: record.friendlyFullName,
+            grade: record.grade,
+            id: -1,
+            date: -1,
+            studentId: record.studentId,
+            email: record.email,
+            phone: record.phone,
+            contactPref: record.contactPref,
+            homeroom: record.homeroom,
+            homeroomTeacher: record.homeroomTeacher,
+            attendanceAnnotation: "",
+            attendance: {}
+          })));
+          learnerId = learnerRecord.id;
+        } else {
+          // learner already exists
+          learnerId = matches[0].id;
+        }
       } // CREATE REQUEST
 
 
       server_1.getResultOrFail((yield shared_1.requests.state.createRecord({
-        learner: learnerRecord.id,
         id: -1,
         date: -1,
+        learner: learnerId,
         mods: record.mods,
         subject: record.subject,
-        specialRoom: record.specialRoom,
-        step: 1
+        isSpecial: record.isSpecial,
+        annotation: record.annotation,
+        step: 1,
+        chosenBookings: []
       }))); // MARK REQUEST SUBMISSION AS CHECKED
       // NOTE: this is only done if the above steps worked
       // so if there's an error, the request submission won't be obliterated
@@ -2196,7 +2660,7 @@ function requestsNavigationScope(renavigate) {
         renavigate(["requests", i.id], false);
       }).dom];
     });
-    requestsTable.setAllValues(Object.values(requestRecords));
+    requestsTable.setAllValues(Object.values(requestRecords).sort((a, b) => a.step < b.step ? 1 : -1));
     return requestsTable.dom;
   }
 
@@ -2251,7 +2715,7 @@ function requestsNavigationScope(renavigate) {
     const index = {};
 
     for (const x of Object.values(tutorRecords)) {
-      index[String(x.id)] = {
+      index[x.id] = {
         id: x.id,
         matchedMods: [],
         bookedMods: []
@@ -2259,19 +2723,19 @@ function requestsNavigationScope(renavigate) {
     }
 
     for (const x of Object.values(matchingRecords)) {
-      index[String(x.tutor)].matchedMods.push(x.mod);
+      index[x.tutor].matchedMods.push(x.mod);
     }
 
     for (const x of Object.values(bookingRecords)) {
-      index[String(x.tutor)].bookedMods.push(x.mod);
+      index[x.tutor].bookedMods.push(x.mod);
     }
 
     return index;
   }
 
-  function generateBookerTable(requestId) {
-    const bookerTable = Table_1.TableWidget(["Booking", "Status", "Todo", "Match"], booking => {
-      const formSelectWidget = ui_1.FormSelectWidget(["ignore", "unsent", "waitingForTutor", "rejected"], ["Ignore", "Unsent", "Waiting", "Rejected"]);
+  function generateBookerTable(bookerTableValues) {
+    const bookerTable = Table_1.TableWidget(["Booking", "Status", "Todo"], booking => {
+      const formSelectWidget = ui_1.FormSelectWidget(["ignore", "unsent", "waitingForTutor", "selected", "rejected"], ["Ignore", "Unsent", "Waiting", "Selected", "Rejected"]);
       formSelectWidget.setValue(booking.status);
       formSelectWidget.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
         booking.status = newVal;
@@ -2281,11 +2745,9 @@ function requestsNavigationScope(renavigate) {
           shared_1.alertError(response.message);
         }
       }));
-      return [shared_1.bookings.createFriendlyMarker(booking.id, b => shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + " <> " + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName)), formSelectWidget.dom, ui_1.ButtonWidget("Todo", () => showStep1Messager(booking.id)).dom, ui_1.ButtonWidget("Match", () => {
-        requestChangeToStep2(requestId, booking.id, () => renavigate(["requests"], false));
-      }).dom];
+      return [shared_1.bookings.createFriendlyMarker(booking.id, b => shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + " <> " + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName)), formSelectWidget.dom, ui_1.ButtonWidget("Todo", () => showStep1Messager(booking.id)).dom];
     });
-    bookerTable.setAllValues(Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id)));
+    bookerTable.setAllValues(bookerTableValues);
     return bookerTable.dom;
   }
 
@@ -2295,7 +2757,7 @@ function requestsNavigationScope(renavigate) {
     request
   }) {
     return ui_1.ButtonWidget("Edit bookings", () => {
-      ui_1.showModal("Edit bookings", generatePotentialTable({
+      ui_1.showModal("Edit bookings", generateEditBookingsTable({
         bookingsInfo,
         tutorIndex,
         request
@@ -2349,7 +2811,15 @@ function requestsNavigationScope(renavigate) {
       }
 
       const request = shared_1.requests.state.getRecordOrFail(requestId);
-      const header = shared_1.container("<h1>")(shared_1.requests.createFriendlyMarker(requestId, () => "Request"), ": ", shared_1.learners.createFriendlyMarker(shared_1.requests.state.getRecordOrFail(requestId).learner, x => x.friendlyFullName), shared_1.container('<span class="badge badge-secondary">')(`Step ${requestIndex[requestId].uiStep} (${stepToName(requestIndex[requestId].uiStep)})`)); // LOGIC: We use a toggle structure where:
+      const header = shared_1.container("<div>")(shared_1.container('<span class="badge badge-secondary">')(`Step ${requestIndex[requestId].uiStep} (${stepToName(requestIndex[requestId].uiStep)})`), shared_1.container("<p>")(shared_1.requests.createFriendlyMarker(requestId, x => "Link to request")), shared_1.container("<p>")("Learner: ", request.isSpecial ? "SPECIAL REQUEST" : shared_1.learners.createFriendlyMarker(request.learner, x => `${x.friendlyFullName} (grade = ${x.grade}) (homeroom = ${x.homeroom} ${x.homeroomTeacher})`)), request.step === 3 || request.step === 2 ? ui_1.ButtonWidget("go back a step", () => {
+        if (request.step === 2) {
+          request.chosenBookings = [];
+        }
+
+        request.step--;
+        shared_1.requests.state.updateRecord(request);
+        renavigate(["requests", requestId], false);
+      }).dom : undefined, request.step === 3 || request.step === 2 ? shared_1.container("<p>")(`${request.chosenBookings.length} booking(s) chosen`) : undefined); // LOGIC: We use a toggle structure where:
       // - There is a row of mod buttons
       // - There is add functionality, but not delete functionality (bookings can be individually deleted)
       // - Toggling the button toggles entries in a temporary array of all added bookings [[tutor, mod]] via. filters
@@ -2364,7 +2834,10 @@ function requestsNavigationScope(renavigate) {
       const tutorIndex = buildTutorIndex();
 
       if (requestIndex[requestId].uiStep < 2) {
-        const uiStep01 = shared_1.container("<div></div>")(header, generateBookerTable(requestId), generateEditBookingsButton({
+        const bookerTableValues = Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id));
+        const uiStep01 = shared_1.container("<div></div>")(header, generateBookerTable(bookerTableValues), ui_1.ButtonWidget("Move to step 2", () => {
+          requestChangeToStep2(requestId, bookerTableValues.filter(booking => booking.status === "selected").map(booking => booking.id), () => renavigate(["requests", requestId], false));
+        }).dom, generateEditBookingsButton({
           bookingsInfo,
           tutorIndex,
           request
@@ -2373,12 +2846,12 @@ function requestsNavigationScope(renavigate) {
       }
 
       if (requestIndex[requestId].uiStep === 2) {
-        const uiStep2 = shared_1.container('<div class="jumbotron">')(shared_1.container("<h1>")("Write a pass for the learner"), shared_1.container('<p class="lead">')("Here is the information:"), shared_1.container("<p>")("Homeroom = " + shared_1.learners.createLabel(requestRecords[requestId].learner, x => x.homeroom)), shared_1.container("<p>")("Homeroom teacher = " + shared_1.learners.createLabel(requestRecords[requestId].learner, x => x.homeroomTeacher)), ui_1.ButtonWidget("OK, I've written the pass", () => requestChangeToStep3(requestId, () => renavigate(["requests", requestId], false))).dom);
+        const uiStep2 = shared_1.container('<div class="jumbotron">')(header, shared_1.container("<h1>")("Write a pass for the learner ONLY IF they are in 10th grade"), ui_1.ButtonWidget("Move to step 3", () => requestChangeToStep3(requestId, () => renavigate(["requests", requestId], false))).dom);
         return uiStep2;
       }
 
       if (requestIndex[requestId].uiStep === 3) {
-        const uiStep3 = shared_1.container('<div class="jumbotron">')(shared_1.container("<h1>")("Send a confirmation to the learner"), ui_1.ButtonWidget("Send confirmation", () => showStep3Messager(request.chosenBooking)).dom, shared_1.container('<p class="lead">')("After that, click the button below, and the tutor will be assigned for real."), ui_1.ButtonWidget("OK, let's assign the tutor for real", () => requestChangeToStep4(requestId, () => renavigate(["requests", requestId], false))).dom);
+        const uiStep3 = shared_1.container('<div class="jumbotron">')(header, shared_1.container("<h1>")("Send a confirmation to the learner"), ...request.chosenBookings.map(bookingId => ui_1.ButtonWidget("Send confirmation", () => showStep3Messager(bookingId)).dom), ui_1.ButtonWidget("Move to step 4", () => requestChangeToStep4(requestId, () => renavigate(["requests", requestId], false))).dom);
         return uiStep3;
       }
 
@@ -2487,7 +2960,7 @@ function scheduleEditNavigationScope(renavigate) {
       if (tutorModStatusIndex[tutor.id].modStatus[mod - 1] === "available") {
         tutorModStatusIndex[tutor.id].modStatus[mod - 1] = "dropIn";
       }
-    } // preferred mods
+    } // mod status: preferred mods
 
 
     for (const mod of tutor.modsPref) {
@@ -2497,11 +2970,13 @@ function scheduleEditNavigationScope(renavigate) {
 
   for (const booking of Object.values(bookingRecords)) {
     if (booking.status !== "ignore" && booking.status !== "rejected") {
+      // mod status: booked
       tutorModStatusIndex[booking.tutor].modStatus[booking.mod - 1] = ["booked", booking.id];
     }
   }
 
   for (const matching of Object.values(matchingRecords)) {
+    // mod status: matched
     tutorModStatusIndex[matching.tutor].modStatus[matching.mod - 1] = ["matched", matching.id];
   }
 
@@ -2887,13 +3362,12 @@ function rootWidget() {
           currentNavigationScope = scheduleEditNavigationScope(renavigate);
         }
 
-        if (navigationState[0] === "scheduleView") {
-          //currentNavigationScope = scheduleViewNavigationScope()
-          ui_1.showModal("Not supported", "The view schedule feature is not supported. You shouldn't need it.", bb => [bb("OK", "primary")]);
-        }
-
         if (navigationState[0] === "attendance") {
           currentNavigationScope = attendanceNavigationScope(renavigate);
+        }
+
+        if (navigationState[0] === "runDatachecker") {
+          currentNavigationScope = runDatacheckerNavigationScope(renavigate);
         }
 
         generateSidebar(currentNavigationScope.sidebar, keepScope);
@@ -2982,10 +3456,6 @@ function rootWidget() {
 
       if (text == "Edit schedule") {
         renavigate(["scheduleEdit", "A"], false);
-      }
-
-      if (text == "View schedule") {
-        renavigate(["scheduleView"], false);
       } // ATTENDANCE
 
 
@@ -3004,6 +3474,10 @@ function rootWidget() {
         ui_1.showModal(`Attendance successfully recalculated: ${result} attendances were modified`, "", bb => [bb("OK", "primary")]);
       })); // MISC
 
+      if (text == "Run datachecker") {
+        renavigate(["runDatachecker"], false);
+      }
+
       if (text == "After-school availability") {
         showAfterSchoolAvailablityModal();
       }
@@ -3019,31 +3493,25 @@ function rootWidget() {
           const {
             closeModal
           } = ui_1.showModal("Loading force refresh...", "", bb => [], true);
-          yield shared_1.tutors.state.forceRefresh();
-          yield shared_1.learners.state.forceRefresh();
-          yield shared_1.bookings.state.forceRefresh();
-          yield shared_1.matchings.state.forceRefresh();
-          yield shared_1.requests.state.forceRefresh();
-          yield shared_1.requestSubmissions.state.forceRefresh();
+          yield shared_1.forceRefreshAllResources();
           renavigate(navigationState, false);
           closeModal();
         }))();
       }
 
       if (text == "Testing mode") {
-        window["APP_DEBUG_MOCK"] = 1;
-        shared_1.tutors.state.forceRefresh();
-        shared_1.learners.state.forceRefresh();
-        shared_1.bookings.state.forceRefresh();
-        shared_1.matchings.state.forceRefresh();
-        shared_1.requests.state.forceRefresh();
-        shared_1.requestSubmissions.state.forceRefresh();
+        ;
 
-        for (const window of shared_1.state.tiledWindows.val) {
-          window.onLoad.trigger();
-        }
-
-        showTestingModeWarning();
+        (() => __awaiter(this, void 0, void 0, function* () {
+          const {
+            closeModal
+          } = ui_1.showModal("Loading testing mode...", "", bb => [], true);
+          window["APP_DEBUG_MOCK"] = 1;
+          shared_1.forceRefreshAllResources();
+          showTestingModeWarning();
+          renavigate([], false);
+          closeModal();
+        }))();
       }
     });
     return dom[0];
@@ -3051,7 +3519,7 @@ function rootWidget() {
 
   const sidebarDom = shared_1.container("<div></div>")();
   const mainContentPanelDom = shared_1.container("<div></div>")();
-  const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit">')($('<strong class="mr-4">ARC</strong>'), generateNavigationBar()), shared_1.container('<div class="row m-4 layout-h">')(sidebarDom, mainContentPanelDom));
+  const dom = shared_1.container('<div id="app" class="layout-v"></div>')(shared_1.container('<nav class="navbar layout-item-fit top-ui-card" style="margin: 1rem;">')($('<strong class="mr-4">ARC App</strong>'), generateNavigationBar()), shared_1.container('<div class="row m-4 layout-h">')(sidebarDom, mainContentPanelDom));
   if (window["APP_DEBUG_MOCK"] === 1) showTestingModeWarning();
   return {
     dom
@@ -3059,7 +3527,7 @@ function rootWidget() {
 }
 
 exports.rootWidget = rootWidget;
-},{"./shared":"m0/6","../widgets/ui":"T2q6","../widgets/Table":"Jwlf","./server":"ZgGC"}],"7QCb":[function(require,module,exports) {
+},{"./shared":"m0/6","../widgets/ui":"T2q6","../widgets/Table":"Jwlf","./server":"ZgGC","./datachecker":"Nbnk"}],"7QCb":[function(require,module,exports) {
 "use strict";
 
 var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
@@ -3094,23 +3562,32 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 
-const shared_1 = require("./core/shared");
-
 const widget_1 = require("./core/widget");
 
+const shared_1 = require("./core/shared");
+
 console.log("hi there!");
+const spinnerHTML = `
+<div style="display: flex;align-items: center;justify-content: center;flex-direction: column;">
+<div class="top-ui-card" style="padding: 2rem; display: flex;align-items: center;justify-content: center;flex-direction: column;">
+<p class="lead">ARC App</p>
+<div class="spinner-border" style="width: 8rem; height: 8rem" role="status">
+  <span class="sr-only">Loading...</span>
+</div>
+</div>
+</div>
+`;
 
 window["appOnReady"] = () => __awaiter(this, void 0, void 0, function* () {
-  // TODO: replace with proper loading widget
-  $("body").append($('<h1 id="app">Loading...</h1>'));
-  yield shared_1.initializeResources();
+  $("#app").addClass("layout-v").append(spinnerHTML);
+  yield shared_1.forceRefreshAllResources();
   $("body").empty();
   $("body").append(widget_1.rootWidget().dom);
 });
 
 $(document).ready(window["appOnReady"]);
-},{"./core/shared":"m0/6","./core/widget":"o4ND"}]},{},["7QCb"], null)
+},{"./core/widget":"o4ND","./core/shared":"m0/6"}]},{},["7QCb"], null)
 
 
-/* Automatically built on 2019-09-12 21:21:46 */
+/* Automatically built on 2019-10-26 15:17:18 */
 
