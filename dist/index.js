@@ -1583,6 +1583,7 @@ class Resource {
 
   createLabel(id, builder) {
     try {
+      if (id === -1) return "[NONE]";
       const record = this.state.getRecordOrFail(id);
       return builder.call(null, record);
     } catch (e) {
@@ -1593,6 +1594,7 @@ class Resource {
 
   createDomLabel(id, builder) {
     try {
+      if (id === -1) return $("<span>[NONE]</span>");
       const record = this.state.getRecordOrFail(id);
       return builder.call(null, record);
     } catch (e) {
@@ -1603,33 +1605,31 @@ class Resource {
 
 
   makeTiledEditWindow(id) {
-    return __awaiter(this, void 0, void 0, function* () {
-      let record = null;
-      let errorMessage = "";
+    let record = null;
+    let errorMessage = "";
 
-      try {
-        function capitalizeWord(w) {
-          return w.charAt(0).toUpperCase() + w.slice(1);
-        }
-
-        yield this.state.getRecordCollectionOrFail();
-        record = this.state.getRecordOrFail(id);
-        const windowLabel = capitalizeWord(this.info.title) + ": " + this.createLabel(id, this.info.makeLabel);
-        const form = this.makeFormWidget();
-        form.setAllValues(record);
-        ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), form.dom), bb => [bb("Delete", "danger", () => this.makeTiledDeleteWindow(id, () => bb.close()), false), bb("Save", "primary", () => __awaiter(this, void 0, void 0, function* () {
-          const ask = yield this.state.updateRecord(form.getAllValues());
-
-          if (ask.status === server_1.AskStatus.ERROR) {
-            alertError(ask.message);
-          }
-        })), bb("Close", "secondary")]);
-      } catch (err) {
-        const windowLabel = "ERROR in: " + this.info.title + " #" + id;
-        errorMessage = stringifyError(err);
-        ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
+    try {
+      function capitalizeWord(w) {
+        return w.charAt(0).toUpperCase() + w.slice(1);
       }
-    });
+
+      this.state.getRecordCollectionOrFail();
+      record = this.state.getRecordOrFail(id);
+      const windowLabel = capitalizeWord(this.info.title) + ": " + this.createLabel(id, this.info.makeLabel);
+      const form = this.makeFormWidget();
+      form.setAllValues(record);
+      ui_1.showModal(windowLabel, container("<div></div>")(container("<h1></h1>")(windowLabel), form.dom), bb => [bb("Delete", "danger", () => this.makeTiledDeleteWindow(id, () => bb.close()), false), bb("Save", "primary", () => __awaiter(this, void 0, void 0, function* () {
+        const ask = yield this.state.updateRecord(form.getAllValues());
+
+        if (ask.status === server_1.AskStatus.ERROR) {
+          alertError(ask.message);
+        }
+      })), bb("Close", "secondary")]);
+    } catch (err) {
+      const windowLabel = "ERROR in: " + this.info.title + " #" + id;
+      errorMessage = stringifyError(err);
+      ui_1.showModal(windowLabel, ui_1.ErrorWidget(errorMessage).dom, bb => [bb("Close", "primary")]);
+    }
   }
 
   makeTiledCreateWindow() {
@@ -1902,35 +1902,35 @@ const learnersInfo = {
   makeLabel: record => record.friendlyFullName
 };
 const requestsInfo = {
-  fields: [["learner", ui_1.IdField("learners")], ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["isSpecial", ui_1.BooleanField()], ["annotation", ui_1.StringField("text", "optional")], ["step", ui_1.NumberField("number")], ["chosenBookings", ui_1.NumberArrayField("number")] // TODO: this is a reference to an array of IDs
+  fields: [["learner", ui_1.IdField("learners", "optional")], ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["isSpecial", ui_1.BooleanField()], ["annotation", ui_1.StringField("text", "optional")], ["step", ui_1.NumberField("number")], ["chosenBookings", ui_1.NumberArrayField("number")] // TODO: this is a reference to an array of IDs
   ],
   fieldNameMap,
   tableFieldTitles: ["Learner", "Subject", "Mods"],
-  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
-  makeSearchableContent: record => [exports.learners.createFriendlyMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
+  makeTableRowContent: record => [record.learner === -1 ? "SPECIAL" : exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
+  makeSearchableContent: record => [record.learner === -1 ? "SPECIAL" : exports.learners.createFriendlyMarker(record.learner, x => x.friendlyFullName), record.subject, record.mods.join(", ")],
   title: "request",
   pluralTitle: "requests",
-  makeLabel: record => exports.learners.createLabel(record.learner, x => x.friendlyFullName)
+  makeLabel: record => record.learner === -1 ? "SPECIAL" : exports.learners.createLabel(record.learner, x => x.friendlyFullName)
 };
 const bookingsInfo = {
   fields: [["request", ui_1.IdField("requests")], ["tutor", ui_1.IdField("tutors")], ["mod", ui_1.NumberField("number")], ["status", ui_1.SelectField(["ignore", "unsent", "waitingForTutor", "selected", "rejected"], ["Ignore", "Unsent", "Waiting", "Selected", "Rejected"])]],
   fieldNameMap,
   tableFieldTitles: ["Learner", "Tutor", "Mod", "Status"],
-  makeTableRowContent: record => [exports.learners.createDataEditorMarker(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.status],
-  makeSearchableContent: record => [exports.learners.createLabel(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createLabel(record.tutor, x => x.friendlyFullName), record.mod, record.status],
+  makeTableRowContent: record => [record.learner === -1 ? "SPECIAL" : exports.learners.createDataEditorMarker(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.status],
+  makeSearchableContent: record => [record.learner === -1 ? "SPECIAL" : exports.learners.createLabel(exports.requests.state.getRecordOrFail(record.request).learner, x => x.friendlyFullName), exports.tutors.createLabel(record.tutor, x => x.friendlyFullName), record.mod, record.status],
   title: "booking",
   pluralTitle: "bookings",
-  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + exports.learners.state.getRecordOrFail(exports.requests.state.getRecordOrFail(record.request).learner).friendlyFullName
+  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + (exports.requests.state.getRecordOrFail(record.request).learner === -1 ? "SPECIAL" : exports.learners.state.getRecordOrFail(exports.requests.state.getRecordOrFail(record.request).learner).friendlyFullName)
 };
 const matchingsInfo = {
-  fields: [["learner", ui_1.IdField("learners")], ["tutor", ui_1.IdField("tutors")], ["subject", ui_1.StringField("text")], ["mod", ui_1.NumberField("number")], ["annotation", ui_1.StringField("text", "optional")]],
+  fields: [["learner", ui_1.IdField("learners", "optional")], ["tutor", ui_1.IdField("tutors")], ["subject", ui_1.StringField("text")], ["mod", ui_1.NumberField("number")], ["annotation", ui_1.StringField("text", "optional")]],
   fieldNameMap,
   tableFieldTitles: ["Learner", "Tutor", "Mod", "Subject", "Status"],
-  makeTableRowContent: record => [exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject],
-  makeSearchableContent: record => [exports.learners.createLabel(record.learner, x => x.friendlyFullName), exports.tutors.createLabel(record.tutor, x => x.friendlyFullName), record.mod, record.subject],
+  makeTableRowContent: record => [record.learner === -1 ? "SPECIAL" : exports.learners.createDataEditorMarker(record.learner, x => x.friendlyFullName), exports.tutors.createDataEditorMarker(record.tutor, x => x.friendlyFullName), record.mod, record.subject],
+  makeSearchableContent: record => [record.learner === -1 ? "SPECIAL" : exports.learners.createLabel(record.learner, x => x.friendlyFullName), exports.tutors.createLabel(record.tutor, x => x.friendlyFullName), record.mod, record.subject],
   title: "matching",
   pluralTitle: "matchings",
-  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + exports.learners.state.getRecordOrFail(record.learner).friendlyFullName
+  makeLabel: record => exports.tutors.state.getRecordOrFail(record.tutor).friendlyFullName + " <> " + (record.learner === -1 ? "SPECIAL" : exports.learners.state.getRecordOrFail(record.learner).friendlyFullName)
 };
 const requestSubmissionsInfo = {
   fields: [...makeBasicStudentConfig(), ["mods", ui_1.NumberArrayField("number")], ["subject", ui_1.StringField("text")], ["isSpecial", ui_1.BooleanField()], ["annotation", ui_1.StringField("text", "optional")]],
@@ -2302,7 +2302,7 @@ function showStep3Messager(bookingId) {
   const b = shared_1.bookings.state.getRecordOrFail(bookingId);
   const r = shared_1.requests.state.getRecordOrFail(b.request);
   const t = shared_1.tutors.state.getRecordOrFail(b.tutor);
-  const l = shared_1.learners.state.getRecordOrFail(r.learner);
+  const l = r.learner === -1 ? -1 : shared_1.learners.state.getRecordOrFail(r.learner);
   const dom = $("<div></div>");
 
   if (r.isSpecial === true) {
@@ -2311,10 +2311,16 @@ function showStep3Messager(bookingId) {
   }
 
   dom.append($("<p>Contact the tutor:</p>"));
-  dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutoring ${l.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
-  dom.append($("<p>Contact the learner:</p>"));
-  dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutored by ${t.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
-  ui_1.showModal("Messager", shared_1.container("<div>")(shared_1.container("<h1>")("Messager for ", shared_1.learners.createDataEditorMarker(r.learner, x => x.friendlyFullName), " <> ", shared_1.tutors.createDataEditorMarker(b.tutor, x => x.friendlyFullName)), dom), bb => [bb("OK", "primary")]);
+  dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutoring ${l === -1 ? "<SPECIAL REQUEST -- FILL IN INFO>" : l.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
+
+  if (r.isSpecial) {
+    dom.append($("<p>Because this is a special request, you do not need to contact the learner."));
+  } else {
+    dom.append($("<p>Contact the learner:</p>"));
+    dom.append(ui_1.MessageTemplateWidget(`This is to confirm that starting now, you will be tutored by ${t.friendlyFullName} in subject ${r.subject} during mod ${shared_1.stringifyMod(b.mod)}.`).dom);
+  }
+
+  ui_1.showModal("Messager", dom, bb => [bb("OK", "primary")]);
 }
 
 function showStep1Messager(bookingId) {
@@ -2372,7 +2378,7 @@ function requestChangeToStep4(requestId, onFinish) {
           tutor: b.tutor,
           subject: r.subject,
           mod: b.mod,
-          specialRoom: r.specialRoom,
+          annotation: r.annotation,
           id: -1,
           date: -1
         });
@@ -2656,11 +2662,11 @@ function requestsNavigationScope(renavigate) {
 
   function generateRequestsTable() {
     const requestsTable = Table_1.TableWidget(["Request", "Step #", "Open"], i => {
-      return [shared_1.requests.createDataEditorMarker(i.id, x => shared_1.learners.createLabel(x.learner, y => y.friendlyFullName)), String(requestIndex[i.id].uiStep), ui_1.ButtonWidget("Open", () => {
+      return [shared_1.requests.createDataEditorMarker(i.id, x => x.learner === -1 ? "SPECIAL" : shared_1.learners.createLabel(x.learner, y => y.friendlyFullName)), String(requestIndex[i.id].uiStep), ui_1.ButtonWidget("Open", () => {
         renavigate(["requests", i.id], false);
       }).dom];
     });
-    requestsTable.setAllValues(Object.values(requestRecords).sort((a, b) => a.step < b.step ? 1 : -1));
+    requestsTable.setAllValues(Object.values(requestRecords).sort((a, b) => a.step < b.step ? -1 : 1));
     return requestsTable.dom;
   }
 
@@ -2734,7 +2740,7 @@ function requestsNavigationScope(renavigate) {
   }
 
   function generateBookerTable(bookerTableValues) {
-    const bookerTable = Table_1.TableWidget(["Booking", "Status", "Todo"], booking => {
+    const bookerTable = Table_1.TableWidget(["Booked tutor", "Status", "Todo"], booking => {
       const formSelectWidget = ui_1.FormSelectWidget(["ignore", "unsent", "waitingForTutor", "selected", "rejected"], ["Ignore", "Unsent", "Waiting", "Selected", "Rejected"]);
       formSelectWidget.setValue(booking.status);
       formSelectWidget.onChange(newVal => __awaiter(this, void 0, void 0, function* () {
@@ -2745,7 +2751,8 @@ function requestsNavigationScope(renavigate) {
           shared_1.alertError(response.message);
         }
       }));
-      return [shared_1.bookings.createFriendlyMarker(booking.id, b => shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName) + " <> " + shared_1.learners.createLabel(shared_1.requests.state.getRecordOrFail(booking.request).learner, x => x.friendlyFullName)), formSelectWidget.dom, ui_1.ButtonWidget("Todo", () => showStep1Messager(booking.id)).dom];
+      const learnerId = shared_1.requests.state.getRecordOrFail(booking.request).learner;
+      return [shared_1.bookings.createFriendlyMarker(booking.id, b => shared_1.tutors.createLabel(booking.tutor, x => x.friendlyFullName)), formSelectWidget.dom, ui_1.ButtonWidget("Todo", () => showStep1Messager(booking.id)).dom];
     });
     bookerTable.setAllValues(bookerTableValues);
     return bookerTable.dom;
@@ -2811,7 +2818,7 @@ function requestsNavigationScope(renavigate) {
       }
 
       const request = shared_1.requests.state.getRecordOrFail(requestId);
-      const header = shared_1.container("<div>")(shared_1.container('<span class="badge badge-secondary">')(`Step ${requestIndex[requestId].uiStep} (${stepToName(requestIndex[requestId].uiStep)})`), shared_1.container("<p>")(shared_1.requests.createFriendlyMarker(requestId, x => "Link to request")), shared_1.container("<p>")("Learner: ", request.isSpecial ? "SPECIAL REQUEST" : shared_1.learners.createFriendlyMarker(request.learner, x => `${x.friendlyFullName} (grade = ${x.grade}) (homeroom = ${x.homeroom} ${x.homeroomTeacher})`)), request.step === 3 || request.step === 2 ? ui_1.ButtonWidget("go back a step", () => {
+      const header = shared_1.container('<div class="card">')(shared_1.container('<div class="card-header">')("Helpful info"), shared_1.container('<div class="card-body">')(shared_1.container('<span class="badge badge-secondary">')(`Step ${requestIndex[requestId].uiStep} (${stepToName(requestIndex[requestId].uiStep)})`), shared_1.container("<p>")(shared_1.requests.createFriendlyMarker(requestId, x => "Link to request")), shared_1.container("<p>")("Learner: ", request.isSpecial ? "SPECIAL REQUEST" : shared_1.learners.createFriendlyMarker(request.learner, x => `${x.friendlyFullName} (grade = ${x.grade}) (homeroom = ${x.homeroom} ${x.homeroomTeacher})`)), request.annotation === "" ? undefined : shared_1.container("<p>")("Information: ", request.annotation), request.step === 3 || request.step === 2 ? ui_1.ButtonWidget("go back a step", () => {
         if (request.step === 2) {
           request.chosenBookings = [];
         }
@@ -2819,7 +2826,7 @@ function requestsNavigationScope(renavigate) {
         request.step--;
         shared_1.requests.state.updateRecord(request);
         renavigate(["requests", requestId], false);
-      }).dom : undefined, request.step === 3 || request.step === 2 ? shared_1.container("<p>")(`${request.chosenBookings.length} booking(s) chosen`) : undefined); // LOGIC: We use a toggle structure where:
+      }).dom : undefined, request.step === 3 || request.step === 2 ? shared_1.container("<p>")(`${request.chosenBookings.length} booking(s) chosen`) : undefined)); // LOGIC: We use a toggle structure where:
       // - There is a row of mod buttons
       // - There is add functionality, but not delete functionality (bookings can be individually deleted)
       // - Toggling the button toggles entries in a temporary array of all added bookings [[tutor, mod]] via. filters
@@ -2835,13 +2842,13 @@ function requestsNavigationScope(renavigate) {
 
       if (requestIndex[requestId].uiStep < 2) {
         const bookerTableValues = Object.values(shared_1.bookings.state.getRecordCollectionOrFail()).filter(x => x.request === requestId).map(x => shared_1.bookings.state.getRecordOrFail(x.id));
-        const uiStep01 = shared_1.container("<div></div>")(header, generateBookerTable(bookerTableValues), ui_1.ButtonWidget("Move to step 2", () => {
+        const uiStep01 = shared_1.container("<div></div>")(header, generateBookerTable(bookerTableValues), shared_1.container('<div class="card">')(shared_1.container('<div class="card-body">')(ui_1.ButtonWidget("Move to step 2", () => {
           requestChangeToStep2(requestId, bookerTableValues.filter(booking => booking.status === "selected").map(booking => booking.id), () => renavigate(["requests", requestId], false));
         }).dom, generateEditBookingsButton({
           bookingsInfo,
           tutorIndex,
           request
-        }));
+        }))));
         return uiStep01;
       }
 
@@ -3137,7 +3144,7 @@ function scheduleEditNavigationScope(renavigate) {
     const element = shared_1.container('<li class="text-danger list-group-item">')(shared_1.matchings.createLabel(matchingId, x => shared_1.tutors.createLabel(x.tutor, y => y.friendlyFullName) + " (matched)"));
 
     function popoverContent() {
-      return shared_1.container("<span>")("Details:", shared_1.matchings.createDomLabel(matchingId, x => shared_1.container("<span>")(shared_1.tutors.createFriendlyMarker(x.tutor, y => y.friendlyFullName), " <> ", shared_1.learners.createFriendlyMarker(x.learner, y => y.friendlyFullName))));
+      return shared_1.container("<span>")("Details: ", shared_1.matchings.createDomLabel(matchingId, x => shared_1.container("<span>")("tutor: ", shared_1.tutors.createFriendlyMarker(x.tutor, y => y.friendlyFullName), "<> learner: ", x.learner === -1 ? "(SPECIAL)" : shared_1.learners.createFriendlyMarker(x.learner, y => y.friendlyFullName), x.annotation === "" ? undefined : ` (INFO: ${x.annotation})`)));
     }
 
     popupUtilPlaceElement(scheduleDomA, scheduleDomB, {
@@ -3226,18 +3233,18 @@ function attendanceNavigationScope(renavigate) {
     }
 
     for (const x of Object.values(student.attendance)) {
-      for (const {
-        minutes
-      } of x) {
+      for (const attendanceModDataString of x) {
+        const tokens = attendanceModDataString.split(" ");
+        const minutes = Number(tokens[1]);
+
         if (minutes === 1) {
           ++numExcused;
         } else if (minutes <= 0) {
           ++numAbsent;
         } else {
           ++numPresent;
+          totalMinutes += minutes;
         }
-
-        totalMinutes += minutes;
       }
     }
 
@@ -3284,22 +3291,36 @@ function attendanceNavigationScope(renavigate) {
         }
       }));
       const table = Table_1.TableWidget( // Both learners and tutors are students.
-      ["Date", "Mod", "Present?"], attendanceEntry => {
-        return [new Date(attendanceEntry.date).toISOString().substring(0, 10), String(attendanceEntry.mod), attendanceEntry.minutes > 0 ? `P (${attendanceEntry.minutes} minutes)` : $('<span style="color:red">ABSENT</span>')];
+      ["Date", "Mod", "Present?"], x => {
+        return [new Date(x.date).toISOString().substring(0, 10), String(x.mod), x.minutes > 0 ? x.minutes === 1 ? "EXCUSED" : `P (${x.minutes} minutes)` : $('<span style="color:red">ABSENT</span>')];
       });
       const attendanceData = [];
 
-      for (const x of Object.values(student.attendance)) {
-        for (const y of x) {
-          attendanceData.push(y);
+      for (const [dateKey, dateData] of Object.entries(student.attendance)) {
+        for (const attendanceModDataString of dateData) {
+          const x = attendanceModDataString.split(" ");
+          attendanceData.push({
+            date: Number(dateKey),
+            mod: Number(x[0]),
+            minutes: Number(x[1])
+          });
         }
       }
 
+      attendanceData.sort((a, b) => {
+        // descending by date
+        if (a.date < b.date) return 1;
+        if (a.date > b.date) return -1; // ascending by mod
+
+        if (a.mod < b.mod) return -1;
+        if (a.mod > b.mod) return 1;
+        return 0;
+      });
       table.setAllValues(attendanceData);
-      return shared_1.container("<div>")(header, $('<p class="lead">Attendance annotation:</p>'), attendanceAnnotation.dom, table.dom);
+      return shared_1.container('<div class="overflow-auto">')(header, $('<p class="lead">Attendance annotation:</p>'), attendanceAnnotation.dom, table.dom);
     },
 
-    sidebar: shared_1.container("<div>")($("<h1>Attendance</h1>"), sidebarTable.dom)
+    sidebar: shared_1.container('<div class="overflow-auto">')($("<h1>Attendance</h1>"), sidebarTable.dom)
   };
 }
 
@@ -3589,5 +3610,5 @@ $(document).ready(window["appOnReady"]);
 },{"./core/widget":"o4ND","./core/shared":"m0/6"}]},{},["7QCb"], null)
 
 
-/* Automatically built on 2019-10-26 15:17:18 */
+/* Automatically built on 2019-11-02 12:35:00 */
 
